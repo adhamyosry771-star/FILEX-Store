@@ -175,19 +175,7 @@ export const loginWithEmail = async (email: string, pass: string) => {
     }
     return { success: true, user };
   } catch (error: any) {
-    
-    // --- Auto Create Admin Logic ---
-    if (email === ADMIN_EMAIL) {
-        try {
-            // Attempt to create the user if login failed (e.g. user not found)
-            const result = await createUserWithEmailAndPassword(auth, email, pass);
-            const user = await mapUser(result.user);
-            return { success: true, user };
-        } catch (createError) {
-            // Ignore creation error and return original login error
-        }
-    }
-
+    // REMOVED AUTO CREATE ADMIN LOGIC FOR SECURITY
     let msg = "خطأ في تسجيل الدخول";
     if (error.code === 'auth/invalid-credential') msg = "البريد أو كلمة المرور غير صحيحة";
     return { success: false, message: msg };
