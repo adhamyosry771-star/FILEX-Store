@@ -761,14 +761,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     return (
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-6">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
            <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="text-teal-500" /> إدارة الطلبات</h3>
-           <div className="flex bg-slate-900 rounded-lg p-1">
+           <div className="flex flex-wrap bg-slate-900 rounded-lg p-1 w-full md:w-auto">
               {(['pending', 'completed', 'rejected', 'all'] as const).map(f => (
                   <button 
                     key={f}
                     onClick={() => setOrderFilter(f)}
-                    className={`px-3 py-1 rounded-md text-xs font-bold transition-all ${orderFilter === f ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                    className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded-md text-xs font-bold transition-all text-center ${orderFilter === f ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'}`}
                   >
                       {f === 'pending' ? 'انتظار' : f === 'completed' ? 'مكتمل' : f === 'rejected' ? 'مرفوض' : 'الكل'}
                   </button>
