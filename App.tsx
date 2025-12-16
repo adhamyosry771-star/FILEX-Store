@@ -258,8 +258,9 @@ function App() {
         return;
     }
 
+    // Validation: Ensure ID is provided (Reverted restriction)
     if (!gameIdInput.trim()) {
-        setNotification("يرجى إدخال معرف اللاعب (Game ID)");
+        setNotification("يرجى إدخال معرف اللاعب");
         setTimeout(() => setNotification(null), 2000);
         return;
     }
@@ -596,8 +597,8 @@ function App() {
                             type="text" 
                             value={gameIdInput}
                             onChange={(e) => setGameIdInput(e.target.value)}
-                            className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl py-3 px-4 text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none"
-                            placeholder="ID..."
+                            className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl py-3 px-4 text-slate-900 dark:text-white focus:border-teal-500 focus:outline-none font-mono text-center"
+                            placeholder="ID"
                         />
                     </div>
 

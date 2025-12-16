@@ -196,10 +196,15 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
 
                  {/* Footer Credit - Placed directly below the last item inside the scrollable area */}
                  <div className="pt-6 pb-2 text-center">
-                    <div className="flex items-center justify-center gap-2 text-teal-600/70 dark:text-teal-400/70 text-xs font-mono font-bold tracking-wider py-2 rounded-lg hover:bg-slate-100/50 dark:hover:bg-white/5 transition-colors cursor-default select-none">
+                    <a 
+                        href="https://filex-developer.vercel.app/" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 text-teal-600/70 dark:text-teal-400/70 text-xs font-mono font-bold tracking-wider py-2 rounded-lg hover:bg-slate-100/50 dark:hover:bg-white/5 transition-colors cursor-pointer select-none"
+                    >
                         <Code size={14} />
                         <span>{t.created_by}</span>
-                    </div>
+                    </a>
                     <div className="text-[10px] text-slate-400/70 dark:text-slate-500/70 font-medium tracking-wide mt-1 select-none">
                         {t.all_rights_reserved}
                     </div>
