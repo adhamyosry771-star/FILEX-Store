@@ -55,6 +55,7 @@ export interface User {
   isAdmin?: boolean;
   permissions?: string[]; // Array of allowed tab IDs (e.g., ['orders', 'support'])
   isBanned?: boolean;
+  readOfficial?: string[]; // IDs of official notifications read by the user
 }
 
 export interface Category {

@@ -16,7 +16,7 @@ import { Product, Tab, User, Category, Order, BannerData, NewsItem, Language, No
 import { subscribeToAuthChanges, logoutUser } from './auth';
 import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search } from 'lucide-react';
 import { db } from './firebase';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, deleteDoc, addDoc, writeBatch, arrayUnion } from 'firebase/firestore';
 import { TRANSLATIONS } from './constants';
 
 function App() {
@@ -118,7 +118,7 @@ function App() {
             id: doc.id, 
             ...doc.data(),
             type: 'official', // Ensure type is official
-            read: false // Public notifications handle read status differently or assume unread for simplicity in this version
+            read: false // Default to false, logic in allNotifications handles user state
         } as Notification));
         setPublicNotifications(loadedPublic);
     });
@@ -179,13 +179,21 @@ function App() {
     };
   }, [activeTab]);
 
-  // Combine notifications
-  const allNotifications = [...privateNotifications, ...publicNotifications].sort((a, b) => 
+  // Combine notifications and handle read status for official ones
+  const allNotifications = [
+      ...privateNotifications, 
+      ...publicNotifications.map(n => ({
+          ...n,
+          // Check if this notification ID is in the user's readOfficial array
+          read: user?.readOfficial?.includes(n.id) || false
+      }))
+  ].sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
   // Reset category selection and search when switching tabs
   useEffect(() => {
+    window.scrollTo(0, 0); // Always scroll to top when changing tabs
     if (activeTab !== Tab.STORE) {
       setSelectedCategory(null);
       setStoreSearchQuery('');
@@ -256,22 +264,50 @@ function App() {
 
   const handleMarkAsRead = async (notificationId: string) => {
       if (!user) return;
-      // We only try to mark "private" notifications as read in this simple version
-      // because official notifications are in a read-only global collection
+      
       const isPrivate = privateNotifications.some(n => n.id === notificationId);
+      
       if (isPrivate) {
+          // Mark private notification as read
           await updateDoc(doc(db, "users", user.id, "notifications", notificationId), { read: true });
+      } else {
+          // Mark official notification as read by adding its ID to user's readOfficial array
+          // Check if already read to save a write
+          if (!user.readOfficial?.includes(notificationId)) {
+             await updateDoc(doc(db, "users", user.id), {
+                 readOfficial: arrayUnion(notificationId)
+             });
+          }
       }
   };
 
   const handleMarkAllRead = async () => {
       if (!user) return;
       const batch = writeBatch(db);
+      
+      // 1. Mark all private notifications
       privateNotifications.filter(n => !n.read).forEach(n => {
           const docRef = doc(db, "users", user.id, "notifications", n.id);
           batch.update(docRef, { read: true });
       });
-      await batch.commit();
+
+      // 2. Mark all official notifications
+      // Find all official notifications that are NOT in user.readOfficial
+      const unreadOfficialIds = publicNotifications
+          .filter(n => !user.readOfficial?.includes(n.id))
+          .map(n => n.id);
+      
+      if (unreadOfficialIds.length > 0) {
+          const userRef = doc(db, "users", user.id);
+          // arrayUnion can take multiple arguments
+          batch.update(userRef, {
+              readOfficial: arrayUnion(...unreadOfficialIds)
+          });
+      }
+
+      if (privateNotifications.filter(n => !n.read).length > 0 || unreadOfficialIds.length > 0) {
+          await batch.commit();
+      }
   };
 
   // --- Purchase Logic ---
@@ -526,7 +562,7 @@ function App() {
         onOpenChat={() => setIsSupportOpen(true)}
         lang={lang}
         setLang={setLang}
-        unreadNotifications={allNotifications.filter(n => !n.read).length}
+        unreadNotifications={user ? allNotifications.filter(n => !n.read).length : 0}
         onLogout={handleLogout}
       />
       
