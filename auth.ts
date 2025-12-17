@@ -1,6 +1,6 @@
 
 import { 
-  signInWithRedirect, 
+  signInWithPopup, // Changed from signInWithRedirect
   GoogleAuthProvider, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -29,8 +29,10 @@ const getUserData = async (uid: string) => {
 // --- MAPPING ---
 const mapUser = async (fbUser: FirebaseUser): Promise<User> => {
   let storedData = await getUserData(fbUser.uid);
+  let isNewUser = false;
 
   if (!storedData) {
+    isNewUser = true; // Mark as new user
     // Transaction to get a unique custom ID safely
     let newCustomId = 10000;
     
@@ -84,7 +86,8 @@ const mapUser = async (fbUser: FirebaseUser): Promise<User> => {
     joinDate: storedData.joinDate || new Date().toISOString(),
     isAdmin: storedData.isAdmin || false,
     permissions: storedData.permissions, // Load permissions
-    isBanned: storedData.isBanned || false
+    isBanned: storedData.isBanned || false,
+    isNewUser: isNewUser // Pass this flag to the UI
   };
 };
 
@@ -132,15 +135,21 @@ export const createNewAdminUser = async (email: string, pass: string, name: stri
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   try {
-    // استخدمنا signInWithRedirect بدلاً من signInWithPopup
-    // هذا يضمن ظهور صفحة اختيار الحسابات كاملة (مثل الصورة) ويحل مشاكل الموبايل
-    await signInWithRedirect(auth, provider);
-    
-    // لن يتم تنفيذ الكود أدناه لأن الصفحة ستنتقل إلى جوجل
-    // سيتم التعامل مع المستخدم عند عودته عن طريق subscribeToAuthChanges
-    return { success: true, user: null };
+    // Changed to Popup to maintain state and allow "Complete Profile" flow
+    const result = await signInWithPopup(auth, provider);
+    const user = await mapUser(result.user);
+    return { success: true, user: user };
   } catch (error: any) {
-    return { success: false, message: error.message };
+    let msg = error.message;
+    // Translate common errors
+    if (error.code === 'auth/unauthorized-domain') {
+        msg = "هذا النطاق غير مصرح به في إعدادات Firebase (Authorized Domains).";
+    } else if (error.code === 'auth/popup-closed-by-user') {
+        msg = "تم إلغاء عملية تسجيل الدخول.";
+    } else if (error.code === 'auth/cancelled-popup-request') {
+        msg = "تم إلغاء الطلب السابق.";
+    }
+    return { success: false, message: msg };
   }
 };
 
@@ -156,7 +165,7 @@ export const registerWithEmail = async (email: string, pass: string, name: strin
         photoURL: photoURL || null
     });
     
-    const updatedUser = { ...user, name, photoURL: photoURL || null };
+    const updatedUser = { ...user, name, photoURL: photoURL || null, isNewUser: true };
 
     return { success: true, user: updatedUser };
   } catch (error: any) {

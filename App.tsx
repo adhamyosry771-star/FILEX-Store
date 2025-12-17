@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
 import Banner from './components/Banner';
@@ -13,8 +13,8 @@ import AdminDashboard from './components/AdminDashboard';
 import NotificationsPage from './components/NotificationsPage';
 import Ticker from './components/Ticker';
 import { Product, Tab, User, Category, Order, BannerData, NewsItem, Language, Notification } from './types';
-import { subscribeToAuthChanges, logoutUser } from './auth';
-import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search } from 'lucide-react';
+import { subscribeToAuthChanges, logoutUser, updateUserProfile } from './auth';
+import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search, Camera, Save } from 'lucide-react';
 import { db } from './firebase';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, deleteDoc, addDoc, writeBatch, arrayUnion } from 'firebase/firestore';
 import { TRANSLATIONS } from './constants';
@@ -54,6 +54,12 @@ function App() {
   // Store State
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [storeSearchQuery, setStoreSearchQuery] = useState('');
+
+  // --- New User Profile Setup State ---
+  const [isProfileSetupOpen, setIsProfileSetupOpen] = useState(false);
+  const [setupName, setSetupName] = useState('');
+  const [setupPhoto, setSetupPhoto] = useState('');
+  const setupFileRef = useRef<HTMLInputElement>(null);
 
   // --- Localization Effect ---
   useEffect(() => {
@@ -400,6 +406,13 @@ function App() {
   const handleLogin = (userData: User) => {
     setNotification(`${t.welcome} ${userData.name}`);
     setTimeout(() => setNotification(null), 2000);
+    
+    // Check if new user to trigger setup wizard
+    if (userData.isNewUser) {
+        setSetupName(userData.name);
+        setSetupPhoto(userData.photoURL || '');
+        setIsProfileSetupOpen(true);
+    }
   };
 
   const handleLogout = async () => {
@@ -407,6 +420,29 @@ function App() {
     setActiveTab(Tab.HOME);
     setNotification('تم تسجيل الخروج بنجاح');
     setTimeout(() => setNotification(null), 2000);
+  };
+  
+  // Profile Setup Handlers
+  const handleSetupImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSetupPhoto(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  const handleCompleteSetup = async () => {
+      if (!user) return;
+      await updateUserProfile(user.id, {
+          name: setupName,
+          photoURL: setupPhoto || undefined
+      });
+      setIsProfileSetupOpen(false);
+      setNotification('تم تحديث الملف الشخصي بنجاح');
+      setTimeout(() => setNotification(null), 2000);
   };
 
   // --- Home Tab ---
@@ -638,6 +674,62 @@ function App() {
       {/* Success Modal */}
       {showOrderSuccess && (
           <OrderSuccessModal onClose={() => setShowOrderSuccess(false)} />
+      )}
+
+      {/* Profile Setup Modal for New Users */}
+      {isProfileSetupOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md"></div>
+            <div className="bg-slate-800 w-full max-w-md rounded-3xl border border-slate-700 shadow-2xl relative p-8 animate-fade-in-up z-10 text-center">
+                <h2 className="text-2xl font-bold text-white mb-2">أهلاً بك في FILEX Store! 🎉</h2>
+                <p className="text-slate-400 text-sm mb-6">يرجى إكمال ملفك الشخصي للمتابعة</p>
+
+                <div className="flex justify-center mb-6">
+                     <input 
+                        type="file" 
+                        ref={setupFileRef}
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={handleSetupImageUpload}
+                    />
+                    <div className="relative group cursor-pointer" onClick={() => setupFileRef.current?.click()}>
+                        <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-600 group-hover:border-teal-500 transition-colors shadow-lg">
+                            {setupPhoto ? (
+                                <img src={setupPhoto} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <div className="w-full h-full bg-slate-700 flex items-center justify-center">
+                                    <Camera size={32} className="text-slate-500" />
+                                </div>
+                            )}
+                        </div>
+                        <div className="absolute bottom-0 right-0 bg-teal-500 p-2 rounded-full border-2 border-slate-800 text-white">
+                            <Camera size={14} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4 text-right">
+                    <div>
+                        <label className="block text-slate-400 text-sm mb-2 font-bold">الاسم الظاهر</label>
+                        <input 
+                            type="text" 
+                            value={setupName}
+                            onChange={(e) => setSetupName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white focus:border-teal-500 outline-none text-center font-bold"
+                            placeholder="اكتب اسمك هنا"
+                        />
+                    </div>
+                    
+                    <button 
+                        onClick={handleCompleteSetup}
+                        disabled={!setupName.trim()}
+                        className="w-full bg-teal-500 hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-4 transition-all shadow-lg shadow-teal-500/20"
+                    >
+                        <Save size={18} /> حفظ ومتابعة
+                    </button>
+                </div>
+            </div>
+          </div>
       )}
 
       {/* Purchase Modal */}

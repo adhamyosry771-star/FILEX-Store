@@ -38,18 +38,16 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
+    
+    // Uses Popup now, so we wait for the result here
     const result = await signInWithGoogle();
     
-    // If using redirect, result.user will be null but success is true.
-    // The page will redirect, so we don't need to do anything here.
-    if (result.success) {
-      return; 
-    }
-
-    if (!result.success) {
+    if (result.success && result.user) {
+      onLogin(result.user);
+    } else {
       setError(result.message || 'فشل تسجيل الدخول بجوجل');
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -94,9 +92,10 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           {!isForgotMode && (
             <button
                 onClick={handleGoogleLogin}
-                className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 mb-6"
+                disabled={loading}
+                className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 mb-6 disabled:opacity-70"
             >
-                <Globe size={20} className="text-blue-600" />
+                {loading ? <Loader2 className="animate-spin text-slate-900" size={20} /> : <Globe size={20} className="text-blue-600" />}
                 استمرار باستخدام Google
             </button>
           )}

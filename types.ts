@@ -56,6 +56,7 @@ export interface User {
   permissions?: string[]; // Array of allowed tab IDs (e.g., ['orders', 'support'])
   isBanned?: boolean;
   readOfficial?: string[]; // IDs of official notifications read by the user
+  isNewUser?: boolean; // Flag to indicate if the user just registered
 }
 
 export interface Category {
