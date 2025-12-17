@@ -1,17 +1,15 @@
 
 import { 
-  signInWithPopup, 
+  signInWithRedirect, 
   GoogleAuthProvider, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  signInWithPhoneNumber,
-  RecaptchaVerifier,
   signOut, 
   onAuthStateChanged,
   User as FirebaseUser,
-  ConfirmationResult,
   getAuth,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  deleteUser
 } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";
 import { doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "firebase/firestore";
@@ -62,6 +60,8 @@ const mapUser = async (fbUser: FirebaseUser): Promise<User> => {
       balance: isFirstAdmin ? 999999 : 0,
       isBanned: false,
       isAdmin: isFirstAdmin,
+      // No permissions array means FULL access (Super Admin)
+      permissions: isFirstAdmin ? undefined : [], 
       photoURL: fbUser.photoURL || null,
       name: fbUser.displayName || fbUser.email?.split('@')[0] || "مستخدم",
       email: fbUser.email,
@@ -83,12 +83,13 @@ const mapUser = async (fbUser: FirebaseUser): Promise<User> => {
     balance: storedData.balance || 0,
     joinDate: storedData.joinDate || new Date().toISOString(),
     isAdmin: storedData.isAdmin || false,
+    permissions: storedData.permissions, // Load permissions
     isBanned: storedData.isBanned || false
   };
 };
 
 // --- Admin Creation ---
-export const createNewAdminUser = async (email: string, pass: string, name: string) => {
+export const createNewAdminUser = async (email: string, pass: string, name: string, permissions: string[] = []) => {
     // We use a secondary app instance to create a user WITHOUT logging out the current admin
     const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
     const secondaryAuth = getAuth(secondaryApp);
@@ -104,6 +105,7 @@ export const createNewAdminUser = async (email: string, pass: string, name: stri
             name: name,
             email: email,
             isAdmin: true,
+            permissions: permissions, // Save selected permissions
             balance: 0,
             customId: customId,
             joinDate: new Date().toISOString(),
@@ -130,13 +132,13 @@ export const createNewAdminUser = async (email: string, pass: string, name: stri
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   try {
-    const result = await signInWithPopup(auth, provider);
-    const user = await mapUser(result.user);
-    if (user.isBanned) {
-        await signOut(auth);
-        return { success: false, message: "تم حظر حسابك. يرجى التواصل مع الإدارة." };
-    }
-    return { success: true, user };
+    // استخدمنا signInWithRedirect بدلاً من signInWithPopup
+    // هذا يضمن ظهور صفحة اختيار الحسابات كاملة (مثل الصورة) ويحل مشاكل الموبايل
+    await signInWithRedirect(auth, provider);
+    
+    // لن يتم تنفيذ الكود أدناه لأن الصفحة ستنتقل إلى جوجل
+    // سيتم التعامل مع المستخدم عند عودته عن طريق subscribeToAuthChanges
+    return { success: true, user: null };
   } catch (error: any) {
     return { success: false, message: error.message };
   }
@@ -168,6 +170,21 @@ export const registerWithEmail = async (email: string, pass: string, name: strin
 export const loginWithEmail = async (email: string, pass: string) => {
   try {
     const result = await signInWithEmailAndPassword(auth, email, pass);
+    
+    // CRITICAL FIX: Check if Firestore document exists. 
+    // If not, it means Admin deleted the user from Dashboard, so we delete Auth credential.
+    const userDocRef = doc(db, "users", result.user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+
+    if (!userDocSnap.exists()) {
+        try {
+            await deleteUser(result.user); // Delete from Firebase Auth
+        } catch (e) {
+            await signOut(auth); // Fallback if delete fails
+        }
+        return { success: false, message: "هذا الحساب غير موجود (تم حذفه)." };
+    }
+
     const user = await mapUser(result.user);
     if (user.isBanned) {
         await signOut(auth);
@@ -175,9 +192,9 @@ export const loginWithEmail = async (email: string, pass: string) => {
     }
     return { success: true, user };
   } catch (error: any) {
-    // REMOVED AUTO CREATE ADMIN LOGIC FOR SECURITY
     let msg = "خطأ في تسجيل الدخول";
     if (error.code === 'auth/invalid-credential') msg = "البريد أو كلمة المرور غير صحيحة";
+    if (error.code === 'auth/user-not-found') msg = "المستخدم غير موجود";
     return { success: false, message: msg };
   }
 };
@@ -211,41 +228,6 @@ export const updateUserProfile = async (uid: string, updates: { name?: string; p
     }
 };
 
-// --- Phone Auth ---
-export const setupRecaptcha = (elementId: string) => {
-  if (!window.recaptchaVerifier) {
-    window.recaptchaVerifier = new RecaptchaVerifier(auth, elementId, {
-      'size': 'invisible',
-      'callback': () => { }
-    });
-  }
-  return window.recaptchaVerifier;
-};
-
-export const sendOtp = async (phoneNumber: string, verifier: any) => {
-  try {
-    const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
-    const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, verifier);
-    return { success: true, confirmationResult };
-  } catch (error: any) {
-    return { success: false, message: "فشل إرسال الرمز. تأكد من الرقم وصيغته" };
-  }
-};
-
-export const verifyOtp = async (confirmationResult: ConfirmationResult, code: string) => {
-  try {
-    const result = await confirmationResult.confirm(code);
-    const user = await mapUser(result.user);
-    if (user.isBanned) {
-        await signOut(auth);
-        return { success: false, message: "تم حظر حسابك" };
-    }
-    return { success: true, user };
-  } catch (error: any) {
-    return { success: false, message: "رمز التحقق غير صحيح" };
-  }
-};
-
 export const logoutUser = async () => {
   await signOut(auth);
 };
@@ -253,6 +235,9 @@ export const logoutUser = async () => {
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
   return onAuthStateChanged(auth, async (fbUser) => {
     if (fbUser) {
+      // Small optimization: If we are not in the login flow (which handles deletions), 
+      // mapUser will recreate the doc if missing (e.g. Google Sign In).
+      // For strictly Email login deletion handling, the loginWithEmail function covers it.
       const user = await mapUser(fbUser);
       if (user.isBanned) {
           signOut(auth);
@@ -265,9 +250,3 @@ export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
     }
   });
 };
-
-declare global {
-  interface Window {
-    recaptchaVerifier: any;
-  }
-}

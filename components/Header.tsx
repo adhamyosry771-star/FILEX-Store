@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Bell, Menu, Search, X, ShieldCheck, Home, User as UserIcon, LogOut, DollarSign, Headset, Code } from 'lucide-react';
+import { Bell, Menu, X, ShieldCheck, Home, User as UserIcon, LogOut, DollarSign, Headset, Code } from 'lucide-react';
 import { Tab, User as UserType, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 
@@ -52,16 +52,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
               </div>
             </div>
 
-            {/* Search Bar (Desktop) */}
-            <div className="hidden md:flex flex-1 max-w-md mx-4 relative">
-              <input 
-                type="text" 
-                placeholder={t.search_placeholder}
-                className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-full py-2 px-4 pr-10 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-              />
-              <Search className={`absolute ${lang === 'ar' ? 'right-3' : 'left-3'} top-2.5 text-slate-400`} size={18} />
-            </div>
-
             {/* Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
               
@@ -101,16 +91,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
                   </div>
                )}
             </div>
-          </div>
-
-          {/* Mobile Search Bar */}
-          <div className="mt-3 md:hidden relative">
-             <input 
-                type="text" 
-                placeholder={t.search_placeholder}
-                className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-              <Search className={`absolute ${lang === 'ar' ? 'right-3' : 'left-3'} top-2.5 text-slate-400`} size={18} />
           </div>
         </div>
       </header>

@@ -14,7 +14,7 @@ import NotificationsPage from './components/NotificationsPage';
 import Ticker from './components/Ticker';
 import { Product, Tab, User, Category, Order, BannerData, NewsItem, Language, Notification } from './types';
 import { subscribeToAuthChanges, logoutUser } from './auth';
-import { Layers, ChevronRight, Zap, X, DollarSign, Send } from 'lucide-react';
+import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search } from 'lucide-react';
 import { db } from './firebase';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore';
 import { TRANSLATIONS } from './constants';
@@ -35,7 +35,11 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [banners, setBanners] = useState<BannerData[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
-  const [userNotifications, setUserNotifications] = useState<Notification[]>([]);
+  
+  // Notification States
+  const [privateNotifications, setPrivateNotifications] = useState<Notification[]>([]);
+  const [publicNotifications, setPublicNotifications] = useState<Notification[]>([]);
+  
   const [tickerMessage, setTickerMessage] = useState('');
   const [whatsAppNumber, setWhatsAppNumber] = useState('');
   const [walletWhatsAppNumber, setWalletWhatsAppNumber] = useState(''); 
@@ -49,6 +53,7 @@ function App() {
 
   // Store State
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [storeSearchQuery, setStoreSearchQuery] = useState('');
 
   // --- Localization Effect ---
   useEffect(() => {
@@ -107,6 +112,17 @@ function App() {
         }
     });
 
+    // 7. Official (Public) Notifications
+    const unsubOfficialNotifs = onSnapshot(query(collection(db, "official_notifications"), orderBy("date", "desc")), (snapshot) => {
+        const loadedPublic = snapshot.docs.map(doc => ({ 
+            id: doc.id, 
+            ...doc.data(),
+            type: 'official', // Ensure type is official
+            read: false // Public notifications handle read status differently or assume unread for simplicity in this version
+        } as Notification));
+        setPublicNotifications(loadedPublic);
+    });
+
     return () => {
         unsubProducts();
         unsubCategories();
@@ -114,6 +130,7 @@ function App() {
         unsubSettings();
         unsubBanners();
         unsubNews();
+        unsubOfficialNotifs();
     };
   }, []);
 
@@ -134,18 +151,22 @@ function App() {
               }
           });
 
-          // Listen to Notifications
+          // Listen to Private Notifications
           const notifQuery = query(collection(db, "users", authUser.id, "notifications"), orderBy("date", "desc"));
           unsubUserNotifs = onSnapshot(notifQuery, (snapshot) => {
-              const loadedNotifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
-              setUserNotifications(loadedNotifs);
+              const loadedNotifs = snapshot.docs.map(doc => ({ 
+                  id: doc.id, 
+                  ...doc.data(),
+                  type: 'system' // Force type 'system' to prevent ID conflicts with official_notifications
+              } as Notification));
+              setPrivateNotifications(loadedNotifs);
           });
 
       } else {
           if (unsubUserDoc) unsubUserDoc();
           if (unsubUserNotifs) unsubUserNotifs();
           setUser(null);
-          setUserNotifications([]);
+          setPrivateNotifications([]);
           if (activeTab === Tab.ADMIN || activeTab === Tab.NOTIFICATIONS) setActiveTab(Tab.HOME);
       }
       setAuthLoading(false);
@@ -158,12 +179,23 @@ function App() {
     };
   }, [activeTab]);
 
-  // Reset category selection when switching tabs
+  // Combine notifications
+  const allNotifications = [...privateNotifications, ...publicNotifications].sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  // Reset category selection and search when switching tabs
   useEffect(() => {
     if (activeTab !== Tab.STORE) {
       setSelectedCategory(null);
+      setStoreSearchQuery('');
     }
   }, [activeTab]);
+
+  // Reset search when category changes
+  useEffect(() => {
+      setStoreSearchQuery('');
+  }, [selectedCategory]);
 
   // --- Handlers (Firestore Actions) ---
 
@@ -200,8 +232,11 @@ function App() {
   };
 
   const handleDeleteCategory = async (id: string) => {
-    const categoryKey = categories.find(c => c.id === id)?.dataKey;
-    const hasProducts = products.some(p => p.category === categoryKey);
+    const category = categories.find(c => c.id === id);
+    if (!category) return;
+    
+    // Check if products are linked by ID or DataKey to prevent orphans
+    const hasProducts = products.some(p => p.category === category.id || p.category === category.dataKey);
     
     if (hasProducts) {
         setNotification('لا يمكن حذف قسم يحتوي على منتجات');
@@ -221,13 +256,18 @@ function App() {
 
   const handleMarkAsRead = async (notificationId: string) => {
       if (!user) return;
-      await updateDoc(doc(db, "users", user.id, "notifications", notificationId), { read: true });
+      // We only try to mark "private" notifications as read in this simple version
+      // because official notifications are in a read-only global collection
+      const isPrivate = privateNotifications.some(n => n.id === notificationId);
+      if (isPrivate) {
+          await updateDoc(doc(db, "users", user.id, "notifications", notificationId), { read: true });
+      }
   };
 
   const handleMarkAllRead = async () => {
       if (!user) return;
       const batch = writeBatch(db);
-      userNotifications.filter(n => !n.read).forEach(n => {
+      privateNotifications.filter(n => !n.read).forEach(n => {
           const docRef = doc(db, "users", user.id, "notifications", n.id);
           batch.update(docRef, { read: true });
       });
@@ -425,6 +465,11 @@ function App() {
       );
     }
 
+    // Logic to filter products based on search query
+    const filteredProducts = products
+        .filter(p => p.category === selectedCategory.id || p.category === selectedCategory.dataKey)
+        .filter(p => p.name.toLowerCase().includes(storeSearchQuery.toLowerCase()));
+
     return (
         <div className="px-4 pb-20">
             <div className="flex items-center gap-3 mb-6 mt-2">
@@ -437,16 +482,26 @@ function App() {
                 <h2 className="text-xl font-bold text-slate-800 dark:text-white">{selectedCategory.name}</h2>
             </div>
 
+            {/* In-Category Search Bar */}
+            <div className="relative mb-6">
+                 <input 
+                    type="text" 
+                    placeholder={t.search_placeholder}
+                    value={storeSearchQuery}
+                    onChange={(e) => setStoreSearchQuery(e.target.value)}
+                    className="w-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl py-3 px-4 pr-10 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all"
+                 />
+                 <Search className={`absolute ${lang === 'ar' ? 'right-3' : 'left-3'} top-3.5 text-slate-500`} size={20} />
+            </div>
+
             <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 animate-fade-in-up">
-                {products
-                    .filter(p => p.category === selectedCategory.dataKey)
-                    .map((product) => (
+                {filteredProducts.map((product) => (
                         <ProductCard key={product.id} product={product} onAdd={() => openPurchaseModal(product)} />
                     ))
                 }
             </div>
              
-             {products.filter(p => p.category === selectedCategory.dataKey).length === 0 && (
+             {filteredProducts.length === 0 && (
                  <div className="text-center py-10 text-slate-500 bg-slate-200/50 dark:bg-slate-800/50 rounded-xl">
                      <p>{t.no_products}</p>
                  </div>
@@ -471,7 +526,7 @@ function App() {
         onOpenChat={() => setIsSupportOpen(true)}
         lang={lang}
         setLang={setLang}
-        unreadNotifications={userNotifications.filter(n => !n.read).length}
+        unreadNotifications={allNotifications.filter(n => !n.read).length}
         onLogout={handleLogout}
       />
       
@@ -498,11 +553,12 @@ function App() {
         {/* Notifications Page */}
         {activeTab === Tab.NOTIFICATIONS && user && (
             <NotificationsPage 
-                notifications={userNotifications}
+                notifications={allNotifications}
                 onBack={() => setActiveTab(Tab.HOME)}
                 lang={lang}
                 onMarkAsRead={handleMarkAsRead}
                 onMarkAllRead={handleMarkAllRead}
+                userId={user.id}
             />
         )}
 

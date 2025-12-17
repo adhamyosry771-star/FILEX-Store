@@ -6,6 +6,7 @@ export interface Product {
   image: string;
   bgColor: string; 
   isFeatured?: boolean;
+  isAvailable?: boolean; // New field: true = Available, false = Sold Out
   exchangeRate?: number; // How many units per 1 USD (e.g., 1000 Gems)
   unitName?: string; // e.g., "شدة", "ماسة", "دولار"
 }
@@ -52,6 +53,7 @@ export interface User {
   balance: number;
   joinDate: string;
   isAdmin?: boolean;
+  permissions?: string[]; // Array of allowed tab IDs (e.g., ['orders', 'support'])
   isBanned?: boolean;
 }
 
@@ -96,4 +98,6 @@ export interface Notification {
   date: string;
   read: boolean;
   type: 'system' | 'official';
+  likes?: number;
+  likedBy?: string[]; // Array of User IDs
 }

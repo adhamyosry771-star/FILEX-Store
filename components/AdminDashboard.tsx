@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { User, Product, Category, Order, BannerData, NewsItem, SupportSession, ChatMessage } from '../types';
-import { Package, TrendingUp, Trash2, Plus, Settings, Save, Megaphone, Layers, Upload, Check, Users, Ban, DollarSign, FileText, Smartphone, X, Shield, Key, Star, Loader2, Image as ImageIcon, Layout, MinusCircle, UserX, Search, Mail, Send, Headset, MessageSquare, Wallet, AlertTriangle } from 'lucide-react';
+import { User, Product, Category, Order, BannerData, NewsItem, SupportSession, ChatMessage, Notification } from '../types';
+import { Package, TrendingUp, Trash2, Plus, Settings, Save, Megaphone, Layers, Upload, Check, Users, Ban, DollarSign, FileText, Smartphone, X, Shield, Key, Star, Loader2, Image as ImageIcon, Layout, MinusCircle, UserX, Search, Mail, Send, Headset, MessageSquare, Wallet, AlertTriangle, Eye, EyeOff, RefreshCcw, Lock } from 'lucide-react';
 import { createNewAdminUser } from '../auth';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs, addDoc, query, where, arrayUnion } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs, addDoc, query, where, arrayUnion, orderBy, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 
 interface AdminDashboardProps {
@@ -25,6 +25,21 @@ interface AdminDashboardProps {
   onUpdateWalletWhatsApp: (num: string) => void;
 }
 
+// Available permissions definition
+const PERMISSIONS_LIST = [
+    { id: 'overview', label: 'نظرة عامة' },
+    { id: 'support', label: 'الدعم الفني' },
+    { id: 'messages', label: 'الرسائل' },
+    { id: 'orders', label: 'الطلبات' },
+    { id: 'users', label: 'المستخدمين' },
+    { id: 'products', label: 'المنتجات' },
+    { id: 'categories', label: 'الأقسام' },
+    { id: 'admins', label: 'المشرفين (إضافة/حذف)' },
+    { id: 'banners', label: 'البنرات' },
+    { id: 'news', label: 'الأخبار' },
+    { id: 'settings', label: 'الإعدادات' },
+];
+
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
     currentUser, currentTicker, onUpdateTicker, 
     products, categories, orders, onUpdateOrderStatus, whatsAppNumber, onUpdateWhatsApp,
@@ -32,8 +47,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onAddCategory, onDeleteCategory,
     walletWhatsAppNumber, onUpdateWalletWhatsApp
 }) => {
-  const [activeView, setActiveView] = useState<'overview' | 'users' | 'admins' | 'orders' | 'products' | 'categories' | 'settings' | 'banners' | 'news' | 'messages' | 'support'>('overview');
+  // Check if user has permission to see specific tab
+  const hasPermission = (permId: string) => {
+      // If permissions array is undefined/null, it means SUPER ADMIN (full access)
+      if (!currentUser.permissions) return true;
+      return currentUser.permissions.includes(permId);
+  };
+
+  // Determine the default active view based on first available permission
+  const getDefaultView = () => {
+      if (!currentUser.permissions) return 'overview';
+      if (currentUser.permissions.length > 0) return currentUser.permissions[0];
+      return 'overview';
+  };
+
+  const [activeView, setActiveView] = useState<string>(getDefaultView());
   
+  // Ensure active view is valid permissions-wise
+  useEffect(() => {
+      if (!hasPermission(activeView) && currentUser.permissions && currentUser.permissions.length > 0) {
+          setActiveView(currentUser.permissions[0]);
+      }
+  }, [currentUser.permissions]);
+
   // Search State
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
@@ -51,6 +87,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [whatsappInput, setWhatsappInput] = useState(whatsAppNumber);
   const [walletWhatsappInput, setWalletWhatsappInput] = useState(walletWhatsAppNumber);
   const [saveStatus, setSaveStatus] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
 
   // Add/Withdraw Funds Modal State
   const [showFundsModal, setShowFundsModal] = useState(false);
@@ -67,6 +104,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPass, setNewAdminPass] = useState('');
   const [newAdminName, setNewAdminName] = useState('');
+  const [newAdminPermissions, setNewAdminPermissions] = useState<string[]>(PERMISSIONS_LIST.map(p => p.id)); // Default all
   const [adminCreationStatus, setAdminCreationStatus] = useState('');
 
   // Real Users State from Firestore
@@ -82,6 +120,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [broadcastImage, setBroadcastImage] = useState('');
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastStatus, setBroadcastStatus] = useState('');
+  const [officialMessages, setOfficialMessages] = useState<Notification[]>([]); // To list for deletion
 
   // Forms State
   const [showProductForm, setShowProductForm] = useState(false);
@@ -90,7 +129,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       name: '', 
       category: '', 
       image: '', 
-      isFeatured: false, 
+      isFeatured: false,
+      isAvailable: true,
       exchangeRate: undefined, 
       unitName: '' 
   });
@@ -113,7 +153,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const newsFileInputRef = useRef<HTMLInputElement>(null);
   const messageFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch Users, Banners, News, Support Chats
+  // Fetch Users, Banners, News, Support Chats, Official Messages
   useEffect(() => {
     const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
         const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
@@ -128,6 +168,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const unsubNews = onSnapshot(collection(db, "news"), (snapshot) => {
         const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as NewsItem));
         setNews(items);
+    });
+    
+    const unsubOfficialMsgs = onSnapshot(query(collection(db, "official_notifications"), orderBy("date", "desc")), (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
+        setOfficialMessages(items);
     });
 
     const unsubSupport = onSnapshot(
@@ -149,7 +194,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         }
     );
 
-    return () => { unsubUsers(); unsubBanners(); unsubNews(); unsubSupport(); };
+    return () => { unsubUsers(); unsubBanners(); unsubNews(); unsubSupport(); unsubOfficialMsgs(); };
   }, [activeSupportChat?.id]); // Dependency to ensure active chat updates
 
   // Scroll active chat to bottom
@@ -187,6 +232,50 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     onUpdateWalletWhatsApp(walletWhatsappInput);
     setSaveStatus('تم الحفظ');
     setTimeout(() => setSaveStatus(''), 2000);
+  };
+
+  const handleResetSite = async () => {
+      if (!window.confirm("تحذير خطير: سيتم حذف جميع البيانات (المنتجات، الأقسام، الطلبات، الرسائل الرسمية، البنرات، الأخبار، المحادثات) ما عدا المستخدمين وأرصدتهم. هل أنت متأكد؟")) return;
+      
+      const confirmation = window.prompt("للتأكيد، اكتب كلمة 'حذف' في المربع أدناه:");
+      if (confirmation !== 'حذف') return;
+
+      setIsResetting(true);
+      try {
+          const collectionsToClear = [
+              'products',
+              'categories',
+              'orders',
+              'banners',
+              'news',
+              'official_notifications',
+              'support_chats'
+          ];
+
+          // Using batches for atomic operations and efficiency
+          for (const colName of collectionsToClear) {
+              const q = query(collection(db, colName));
+              const snapshot = await getDocs(q);
+              
+              // Firestore batches allow 500 ops. We'll do chunks of 400 to be safe.
+              const chunk = 400; 
+              for (let i = 0; i < snapshot.docs.length; i += chunk) {
+                  const batch = writeBatch(db);
+                  const chunkedDocs = snapshot.docs.slice(i, i + chunk);
+                  chunkedDocs.forEach(doc => {
+                      batch.delete(doc.ref);
+                  });
+                  await batch.commit();
+              }
+          }
+          
+          alert("تم تصفير الموقع بنجاح! الموقع جاهز الآن للبدء من جديد.");
+      } catch (error) {
+          console.error("Error resetting site:", error);
+          alert("حدث خطأ أثناء التصفير. يرجى مراجعة وحدة التحكم.");
+      } finally {
+          setIsResetting(false);
+      }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
@@ -258,17 +347,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         image: newProduct.image!,
         bgColor: 'from-slate-700 to-slate-900',
         isFeatured: newProduct.isFeatured,
+        isAvailable: true, // Default to available
         exchangeRate: newProduct.exchangeRate || 0,
         unitName: newProduct.unitName || ''
     });
     // Reset to empty values
-    setNewProduct({ name: '', category: '', image: '', isFeatured: false, exchangeRate: undefined, unitName: '' });
+    setNewProduct({ name: '', category: '', image: '', isFeatured: false, isAvailable: true, exchangeRate: undefined, unitName: '' });
     setShowProductForm(false);
   };
 
   const toggleFeatured = (product: Product) => {
       const docRef = doc(db, "products", product.id);
       updateDoc(docRef, { isFeatured: !product.isFeatured });
+  };
+
+  const toggleAvailability = (product: Product) => {
+    const docRef = doc(db, "products", product.id);
+    const currentStatus = product.isAvailable !== false; // Default true if undefined
+    updateDoc(docRef, { isAvailable: !currentStatus });
   };
 
   const submitCategory = (e: React.FormEvent) => {
@@ -441,22 +537,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setBroadcastStatus('جاري الإرسال...');
 
       try {
-          // Get all users
-          const usersSnapshot = await getDocs(collection(db, "users"));
-          
-          // Create a batch of promises to write notifications
-          const promises = usersSnapshot.docs.map(userDoc => {
-              return addDoc(collection(db, "users", userDoc.id, "notifications"), {
-                  title: broadcastTitle,
-                  body: broadcastBody,
-                  image: broadcastImage || null,
-                  date: new Date().toISOString(),
-                  read: false,
-                  type: 'official'
-              });
+          // Updated: Send to global 'official_notifications' collection instead of individual users
+          await addDoc(collection(db, "official_notifications"), {
+              title: broadcastTitle,
+              body: broadcastBody,
+              image: broadcastImage || null,
+              date: new Date().toISOString(),
+              type: 'official'
           });
-
-          await Promise.all(promises);
 
           setBroadcastStatus('تم إرسال الرسالة لجميع المستخدمين بنجاح!');
           setBroadcastTitle('');
@@ -471,24 +559,41 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
   };
 
+  const handleDeleteBroadcast = async (id: string) => {
+      if (window.confirm('هل أنت متأكد من حذف هذه الرسالة؟ ستختفي لدى جميع المستخدمين.')) {
+          await deleteDoc(doc(db, "official_notifications", id));
+      }
+  };
+
   // --- Admin Management Actions ---
   const removeAdminPrivilege = async (uid: string) => {
      if (window.confirm('هل أنت متأكد من إزالة صلاحيات المشرف؟ سيصبح مستخدماً عادياً.')) {
-         await updateDoc(doc(db, "users", uid), { isAdmin: false });
+         await updateDoc(doc(db, "users", uid), { isAdmin: false, permissions: [] });
      }
+  };
+
+  const handlePermissionToggle = (permId: string) => {
+      setNewAdminPermissions(prev => {
+          if (prev.includes(permId)) {
+              return prev.filter(p => p !== permId);
+          } else {
+              return [...prev, permId];
+          }
+      });
   };
 
   const handleCreateAdmin = async (e: React.FormEvent) => {
       e.preventDefault();
       setAdminCreationStatus('جاري الإنشاء...');
       
-      const res = await createNewAdminUser(newAdminEmail, newAdminPass, newAdminName);
+      const res = await createNewAdminUser(newAdminEmail, newAdminPass, newAdminName, newAdminPermissions);
       
       if (res.success) {
           setAdminCreationStatus('تم إنشاء حساب المشرف بنجاح!');
           setNewAdminEmail('');
           setNewAdminPass('');
           setNewAdminName('');
+          setNewAdminPermissions(PERMISSIONS_LIST.map(p => p.id));
       } else {
           setAdminCreationStatus('خطأ: ' + res.message);
       }
@@ -650,7 +755,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               استخدم هذه الواجهة لإرسال إشعار عام لجميع مستخدمي الموقع. سيظهر الإشعار في خانة "الرسائل الرسمية" لدى الجميع.
           </p>
 
-          <form onSubmit={handleSendBroadcast} className="space-y-4 max-w-2xl">
+          <form onSubmit={handleSendBroadcast} className="space-y-4 max-w-2xl mb-12">
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-1 font-bold">عنوان الرسالة</label>
                   <input 
@@ -698,6 +803,36 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   )}
               </div>
           </form>
+
+          {/* List of Previous Messages */}
+          <div className="border-t border-slate-700 pt-8">
+              <h4 className="text-white font-bold mb-4">الرسائل المرسلة سابقاً</h4>
+              <div className="space-y-3">
+                  {officialMessages.length === 0 ? (
+                      <div className="text-slate-500 text-sm text-center py-4">لا توجد رسائل سابقة</div>
+                  ) : (
+                      officialMessages.map(msg => (
+                          <div key={msg.id} className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex justify-between items-center group">
+                              <div className="flex gap-4">
+                                  {msg.image && <img src={msg.image} className="w-16 h-16 rounded-lg object-cover bg-slate-800" />}
+                                  <div>
+                                      <h5 className="font-bold text-white text-sm">{msg.title}</h5>
+                                      <p className="text-slate-400 text-xs line-clamp-1">{msg.body}</p>
+                                      <span className="text-[10px] text-slate-600 mt-1 block">{new Date(msg.date).toLocaleDateString()}</span>
+                                  </div>
+                              </div>
+                              <button 
+                                onClick={() => handleDeleteBroadcast(msg.id)}
+                                className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                                title="حذف الرسالة من عند الجميع"
+                              >
+                                  <Trash2 size={16} />
+                              </button>
+                          </div>
+                      ))
+                  )}
+              </div>
+          </div>
       </div>
   );
 
@@ -766,11 +901,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="space-y-6">
         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
            <h3 className="text-lg font-bold text-white mb-4">إضافة مشرف جديد</h3>
-           <form onSubmit={handleCreateAdmin} className="space-y-3 max-w-md">
+           <form onSubmit={handleCreateAdmin} className="space-y-3">
              <input type="text" placeholder="الاسم" required value={newAdminName} onChange={e => setNewAdminName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-teal-500 outline-none" />
              <input type="email" placeholder="البريد الإلكتروني" required value={newAdminEmail} onChange={e => setNewAdminEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-teal-500 outline-none" />
              <input type="password" placeholder="كلمة المرور" required value={newAdminPass} onChange={e => setNewAdminPass(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-teal-500 outline-none" />
-             <button type="submit" className="bg-teal-500 hover:bg-teal-600 text-white py-2 px-4 rounded-lg text-sm font-bold w-full transition-colors">إنشاء مشرف</button>
+             
+             {/* Permissions Checklist */}
+             <div className="mt-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                 <h4 className="text-white text-sm font-bold mb-3">الصلاحيات:</h4>
+                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                     {PERMISSIONS_LIST.map((perm) => (
+                         <label key={perm.id} className="flex items-center gap-2 cursor-pointer group">
+                             <div className={`w-5 h-5 rounded border border-slate-500 flex items-center justify-center transition-colors ${newAdminPermissions.includes(perm.id) ? 'bg-teal-500 border-teal-500' : 'bg-slate-800'}`}>
+                                 {newAdminPermissions.includes(perm.id) && <Check size={14} className="text-white" />}
+                             </div>
+                             <input 
+                                type="checkbox" 
+                                className="hidden"
+                                checked={newAdminPermissions.includes(perm.id)}
+                                onChange={() => handlePermissionToggle(perm.id)}
+                             />
+                             <span className="text-slate-300 text-xs font-medium group-hover:text-white">{perm.label}</span>
+                         </label>
+                     ))}
+                 </div>
+             </div>
+
+             <button type="submit" className="bg-teal-500 hover:bg-teal-600 text-white py-2 px-4 rounded-lg text-sm font-bold w-full transition-colors mt-2">إنشاء مشرف</button>
              {adminCreationStatus && <p className="text-xs text-slate-400 text-center">{adminCreationStatus}</p>}
            </form>
         </div>
@@ -779,13 +936,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
            <h3 className="text-lg font-bold text-white mb-4">قائمة المشرفين</h3>
            <div className="space-y-3">
              {admins.map(admin => (
-               <div key={admin.id} className="flex justify-between items-center bg-slate-900 p-3 rounded-lg border border-slate-700">
+               <div key={admin.id} className="flex flex-col md:flex-row justify-between md:items-center bg-slate-900 p-3 rounded-lg border border-slate-700 gap-3">
                  <div>
-                   <div className="font-bold text-white text-sm">{admin.name}</div>
+                   <div className="font-bold text-white text-sm">{admin.name} {admin.permissions ? <span className="text-[10px] text-slate-500 font-normal">(مشرف محدد)</span> : <span className="text-[10px] text-teal-400 font-normal">(مشرف عام)</span>}</div>
                    <div className="text-[10px] md:text-xs text-slate-500">{admin.email}</div>
                  </div>
                  {currentUser.id !== admin.id && (
-                   <button onClick={() => removeAdminPrivilege(admin.id)} className="text-red-400 hover:text-red-300 text-xs font-bold">إزالة</button>
+                   <button onClick={() => removeAdminPrivilege(admin.id)} className="text-red-400 hover:text-red-300 text-xs font-bold self-end md:self-auto">إزالة</button>
                  )}
                </div>
              ))}
@@ -883,7 +1040,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <input type="text" placeholder="اسم المنتج" required value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="bg-slate-800 border border-slate-600 rounded-lg p-2 md:p-3 text-white focus:border-teal-500 outline-none text-sm" />
                           <select required value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} className="bg-slate-800 border border-slate-600 rounded-lg p-2 md:p-3 text-white focus:border-teal-500 outline-none text-sm">
                               <option value="">اختر القسم</option>
-                              {categories.map(c => <option key={c.id} value={c.dataKey}>{c.name}</option>)}
+                              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                           </select>
                           <input type="number" placeholder="سعر الصرف" step="0.01" value={newProduct.exchangeRate || ''} onChange={e => setNewProduct({...newProduct, exchangeRate: parseFloat(e.target.value)})} className="bg-slate-800 border border-slate-600 rounded-lg p-2 md:p-3 text-white focus:border-teal-500 outline-none text-sm" />
                           <input type="text" placeholder="اسم الوحدة" value={newProduct.unitName || ''} onChange={e => setNewProduct({...newProduct, unitName: e.target.value})} className="bg-slate-800 border border-slate-600 rounded-lg p-2 md:p-3 text-white focus:border-teal-500 outline-none text-sm" />
@@ -906,20 +1063,31 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-                  {products.map(p => (
-                      <div key={p.id} className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex gap-3 relative group">
-                          <img src={p.image} className="w-14 h-14 md:w-16 md:h-16 rounded-lg object-cover bg-slate-800" />
-                          <div className="flex-1">
-                              <div className="font-bold text-white text-sm">{p.name}</div>
-                              <div className="text-[10px] md:text-xs text-slate-500">{categories.find(c => c.dataKey === p.category)?.name || p.category}</div>
-                              {p.exchangeRate && <div className="text-[10px] text-green-400 mt-1">1$ = {p.exchangeRate} {p.unitName}</div>}
+                  {products.map(p => {
+                      // Check for availability, default true if undefined
+                      const isAvailable = p.isAvailable !== false;
+                      
+                      return (
+                          <div key={p.id} className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex gap-3 relative group">
+                              <img src={p.image} className={`w-14 h-14 md:w-16 md:h-16 rounded-lg object-cover bg-slate-800 ${!isAvailable ? 'grayscale' : ''}`} />
+                              <div className="flex-1">
+                                  <div className="font-bold text-white text-sm">{p.name}</div>
+                                  <div className="text-[10px] md:text-xs text-slate-500">
+                                    {categories.find(c => c.id === p.category || c.dataKey === p.category)?.name || 'غير معروف'}
+                                  </div>
+                                  {p.exchangeRate && <div className="text-[10px] text-green-400 mt-1">1$ = {p.exchangeRate} {p.unitName}</div>}
+                                  {!isAvailable && <div className="text-[10px] text-red-500 font-bold mt-1">غير متاح</div>}
+                              </div>
+                              <div className="absolute top-2 left-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                  <button onClick={() => toggleAvailability(p)} className={`p-1.5 rounded-lg ${!isAvailable ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`} title={isAvailable ? "إخفاء (غير متاح)" : "إظهار (متاح)"}>
+                                      {isAvailable ? <Eye size={14} /> : <EyeOff size={14} />}
+                                  </button>
+                                  <button onClick={() => toggleFeatured(p)} className={`p-1.5 rounded-lg ${p.isFeatured ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-400'}`}><Star size={14} fill={p.isFeatured ? "currentColor" : "none"} /></button>
+                                  <button onClick={() => onDeleteProduct(p.id)} className="p-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white"><Trash2 size={14} /></button>
+                              </div>
                           </div>
-                          <div className="absolute top-2 left-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => toggleFeatured(p)} className={`p-1.5 rounded-lg ${p.isFeatured ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-400'}`}><Star size={14} fill={p.isFeatured ? "currentColor" : "none"} /></button>
-                              <button onClick={() => onDeleteProduct(p.id)} className="p-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white"><Trash2 size={14} /></button>
-                          </div>
-                      </div>
-                  ))}
+                      );
+                  })}
               </div>
           </div>
       </div>
@@ -994,6 +1162,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex items-center gap-4">
                   <button onClick={handleSaveSettings} className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-2 md:px-8 md:py-3 rounded-xl font-bold transition-colors text-sm">حفظ التغييرات</button>
                   {saveStatus && <span className="text-green-400 font-bold animate-fade-in text-sm">{saveStatus}</span>}
+              </div>
+
+              <div className="mt-8 border-t border-slate-700 pt-6">
+                  <h4 className="text-red-500 font-bold mb-4 flex items-center gap-2">
+                      <AlertTriangle /> منطقة الخطر
+                  </h4>
+                  <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
+                      <p className="text-slate-300 text-sm mb-4">
+                          هذا الزر سيقوم بحذف جميع البيانات من الموقع (المنتجات، الأقسام، الطلبات، الرسائل، البنرات) 
+                          <strong className="text-white"> مع الاحتفاظ بحسابات المستخدمين وأرصدتهم فقط.</strong>
+                          <br />
+                          استخدم هذا الزر فقط عند تجهيز الموقع للإطلاق الجديد.
+                      </p>
+                      <button 
+                          onClick={handleResetSite} 
+                          disabled={isResetting}
+                          className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold text-sm w-full md:w-auto flex justify-center items-center gap-2"
+                      >
+                          {isResetting ? <Loader2 className="animate-spin" /> : <Trash2 size={18} />}
+                          تصفير الموقع بالكامل
+                      </button>
+                  </div>
               </div>
           </div>
       </div>
@@ -1092,8 +1282,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <h1 className="text-xl md:text-3xl font-bold text-white">لوحة التحكم</h1>
             <p className="text-slate-400 text-xs md:text-sm">مرحباً بك، {currentUser.name}</p>
         </div>
-        <div className="bg-teal-500/10 text-teal-400 px-2 py-1 md:px-4 md:py-2 rounded-full border border-teal-500/20 text-[10px] md:text-sm font-bold">
-            وضع المشرف
+        <div className="bg-teal-500/10 text-teal-400 px-2 py-1 md:px-4 md:py-2 rounded-full border border-teal-500/20 text-[10px] md:text-sm font-bold flex items-center gap-2">
+            <Shield size={14} />
+            {currentUser.permissions ? 'مشرف' : 'مدير عام'}
         </div>
       </div>
 
@@ -1112,7 +1303,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 { id: 'categories', icon: Layers, label: 'الأقسام' },
                 { id: 'products', icon: Package, label: 'المنتجات' },
                 { id: 'settings', icon: Megaphone, label: 'الإعدادات' }
-            ].map(tab => (
+            ].filter(tab => hasPermission(tab.id)).map(tab => (
                 <button 
                     key={tab.id}
                     onClick={() => setActiveView(tab.id as any)} 
@@ -1130,17 +1321,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       <div className="animate-fade-in-up">
-        {activeView === 'overview' && renderOverview()}
-        {activeView === 'support' && renderSupport()}
-        {activeView === 'users' && renderUsers()}
-        {activeView === 'admins' && renderAdmins()}
-        {activeView === 'orders' && renderOrders()}
-        {activeView === 'categories' && renderCategories()}
-        {activeView === 'products' && renderProducts()}
-        {activeView === 'settings' && renderSettings()}
-        {activeView === 'banners' && renderBanners()}
-        {activeView === 'news' && renderNews()}
-        {activeView === 'messages' && renderMessages()}
+        {activeView === 'overview' && hasPermission('overview') && renderOverview()}
+        {activeView === 'support' && hasPermission('support') && renderSupport()}
+        {activeView === 'users' && hasPermission('users') && renderUsers()}
+        {activeView === 'admins' && hasPermission('admins') && renderAdmins()}
+        {activeView === 'orders' && hasPermission('orders') && renderOrders()}
+        {activeView === 'categories' && hasPermission('categories') && renderCategories()}
+        {activeView === 'products' && hasPermission('products') && renderProducts()}
+        {activeView === 'settings' && hasPermission('settings') && renderSettings()}
+        {activeView === 'banners' && hasPermission('banners') && renderBanners()}
+        {activeView === 'news' && hasPermission('news') && renderNews()}
+        {activeView === 'messages' && hasPermission('messages') && renderMessages()}
       </div>
 
       {/* Funds Modal */}
