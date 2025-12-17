@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
-import { signInWithGoogle, registerWithEmail, loginWithEmail, resetPassword } from '../auth';
-import { Loader2, Mail, Globe, Upload, Camera, X } from 'lucide-react';
+import { registerWithEmail, loginWithEmail, resetPassword } from '../auth';
+import { Loader2, Upload, Camera, X } from 'lucide-react';
 
 interface AuthProps {
   onLogin: (user: User) => void;
@@ -33,21 +33,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       };
       reader.readAsDataURL(file);
     }
-  };
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError('');
-    
-    // Uses Popup now, so we wait for the result here
-    const result = await signInWithGoogle();
-    
-    if (result.success && result.user) {
-      onLogin(result.user);
-    } else {
-      setError(result.message || 'فشل تسجيل الدخول بجوجل');
-    }
-    setLoading(false);
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -87,26 +72,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <h2 className="text-3xl font-bold text-center mb-6">
             {isForgotMode ? 'استعادة كلمة المرور' : 'مرحباً بك في FILEX'}
           </h2>
-          
-          {/* Google Button - Only if not in forgot mode */}
-          {!isForgotMode && (
-            <button
-                onClick={handleGoogleLogin}
-                disabled={loading}
-                className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 mb-6 disabled:opacity-70"
-            >
-                {loading ? <Loader2 className="animate-spin text-slate-900" size={20} /> : <Globe size={20} className="text-blue-600" />}
-                استمرار باستخدام Google
-            </button>
-          )}
-
-          {!isForgotMode && (
-            <div className="relative flex py-2 items-center mb-6">
-                <div className="flex-grow border-t border-slate-700"></div>
-                <span className="flex-shrink-0 mx-4 text-slate-500 text-xs">أو باستخدام البريد الإلكتروني</span>
-                <div className="flex-grow border-t border-slate-700"></div>
-            </div>
-          )}
 
           {/* EMAIL FORM */}
           <form onSubmit={handleEmailAuth} className="space-y-4">
