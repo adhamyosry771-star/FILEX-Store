@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Menu, X, ShieldCheck, Home, User as UserIcon, LogOut, DollarSign, Headset, Code, ShieldAlert, Info } from 'lucide-react';
 import { Tab, User as UserType, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -17,6 +17,24 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, setLang, unreadNotifications, onLogout }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const t = TRANSLATIONS[lang];
+
+  // منع التمرير عند فتح القائمة الجانبية
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none'; // منع السحب في المتصفحات التي تدعمها
+      document.body.style.overscrollBehavior = 'none';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+      document.body.style.overscrollBehavior = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.touchAction = '';
+      document.body.style.overscrollBehavior = '';
+    };
+  }, [isMenuOpen]);
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
@@ -97,14 +115,14 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
 
       {/* Sidebar / Drawer */}
       <div className={`fixed inset-0 z-[100] transition-all duration-300 ${isMenuOpen ? 'visible' : 'invisible'}`}>
-         {/* Overlay */}
+         {/* Overlay - Slightly more transparent to blend in */}
          <div 
-            className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${isMenuOpen ? 'opacity-100' : 'opacity-0'}`}
+            className={`absolute inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 touch-none ${isMenuOpen ? 'opacity-100' : 'opacity-0'}`}
             onClick={toggleMenu}
          ></div>
          
-         {/* Side Menu - Slightly Darker Transparency (Glassmorphism) */}
-         <div className={`absolute top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} h-full w-72 bg-white/40 dark:bg-[#0f172a]/60 backdrop-blur-3xl border-l border-white/10 shadow-2xl p-6 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : (lang === 'ar' ? 'translate-x-full' : '-translate-x-full')} flex flex-col`}>
+         {/* Side Menu - Increased Transparency with High Blur */}
+         <div className={`absolute top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} h-full w-72 bg-white/20 dark:bg-[#0f172a]/30 backdrop-blur-2xl border-l border-white/10 shadow-2xl p-6 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : (lang === 'ar' ? 'translate-x-full' : '-translate-x-full')} flex flex-col`}>
              
              {/* Header */}
              <div className="flex justify-between items-center mb-8 shrink-0">

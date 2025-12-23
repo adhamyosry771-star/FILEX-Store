@@ -12,7 +12,7 @@ interface AssistantChatProps {
 const AssistantChat: React.FC<AssistantChatProps> = ({ isOpen, onClose }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState<any[]>([
     { role: 'model', text: 'مرحباً بك في FILEX Store! 🌊\nكيف يمكنني مساعدتك اليوم بخصوص شحن الألعاب أو البطاقات؟' }
   ]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -30,14 +30,14 @@ const AssistantChat: React.FC<AssistantChatProps> = ({ isOpen, onClose }) => {
   const handleSend = async () => {
     if (!input.trim() || !process.env.API_KEY) return;
 
-    const userMsg = input;
+    const userMsg = input.trim();
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setLoading(true);
 
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const model = 'gemini-2.5-flash';
+      const modelName = 'gemini-3-flash-preview';
       
       const systemPrompt = `
         You are a helpful customer support assistant for "FILEX Store", a digital goods store selling game top-ups (PUBG, Free Fire, etc.) and gift cards (PlayStation, iTunes, etc.).
@@ -47,17 +47,18 @@ const AssistantChat: React.FC<AssistantChatProps> = ({ isOpen, onClose }) => {
       `;
 
       const response = await ai.models.generateContent({
-        model: model,
+        model: modelName,
         contents: [
             { role: 'user', parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg }] }
         ]
       });
 
-      const text = response.text || "عذراً، حدث خطأ بسيط. يرجى المحاولة مرة أخرى.";
+      // استخلاص النص بشكل آمن لتجنب أخطاء JSON circular references
+      const text = response.text ? String(response.text) : "عذراً، لم أستطع فهم ذلك تماماً. هل يمكنك إعادة صياغة سؤالك؟";
       setMessages(prev => [...prev, { role: 'model', text }]);
 
-    } catch (error) {
-      console.error("Chat Error:", error);
+    } catch (error: any) {
+      console.error("Chat API Error occurred"); // تجنب طباعة كائن الخطأ الكامل الذي قد يحتوي على مراجع دائرية
       setMessages(prev => [...prev, { role: 'model', text: 'عذراً، لا يمكنني الرد حالياً. يرجى التحقق من الاتصال.' }]);
     } finally {
       setLoading(false);
