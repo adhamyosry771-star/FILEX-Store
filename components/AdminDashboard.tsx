@@ -124,12 +124,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Forms State
   const [showProductForm, setShowProductForm] = useState(false);
-  // Default values removed as requested (exchangeRate: undefined, unitName: '')
   const [newProduct, setNewProduct] = useState<Partial<Product>>({ 
       name: '', 
       category: '', 
       image: '', 
       isFeatured: false,
+      isTrending: false,
       isAvailable: true,
       exchangeRate: undefined, 
       unitName: '' 
@@ -187,7 +187,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 if (updated && updated.status !== 'closed') {
                     setActiveSupportChat(updated);
                 } else if (!updated && activeSupportChat.status === 'active') {
-                   // Chat closed remotely or status changed
                    setActiveSupportChat(null);
                 }
             }
@@ -195,23 +194,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
 
     return () => { unsubUsers(); unsubBanners(); unsubNews(); unsubSupport(); unsubOfficialMsgs(); };
-  }, [activeSupportChat?.id]); // Dependency to ensure active chat updates
+  }, [activeSupportChat?.id]);
 
-  // Scroll active chat to bottom
   useEffect(() => {
       if (activeSupportChat) {
           chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
   }, [activeSupportChat?.messages]);
 
-  // Update local state when props change
   useEffect(() => {
       setWhatsappInput(whatsAppNumber);
       setTickerInput(currentTicker);
       setWalletWhatsappInput(walletWhatsAppNumber);
   }, [whatsAppNumber, currentTicker, walletWhatsAppNumber]);
 
-  // --- Helper: Send Notification ---
   const sendSystemNotification = async (userId: string, title: string, body: string) => {
       try {
           await addDoc(collection(db, "users", userId, "notifications"), {
@@ -235,7 +231,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const handleResetSite = async () => {
-      if (!window.confirm("تحذير خطير: سيتم حذف جميع البيانات (المنتجات، الأقسام، الطلبات، الرسائل الرسمية، البنرات، الأخبار، المحادثات) ما عدا المستخدمين وأرصدتهم. هل أنت متأكد؟")) return;
+      if (!window.confirm("تحذير خطير: سيتم حذف جميع البيانات (المنتجات، الأقسام، الطلبات، الرسائل الرسمية، البنرات، الأخبار، المحادثات، ورسائل النظام لجميع المستخدمين) ما عدا حسابات المستخدمين وأرصدتهم. هل أنت متأكد؟")) return;
       
       const confirmation = window.prompt("للتأكيد، اكتب كلمة 'حذف' في المربع أدناه:");
       if (confirmation !== 'حذف') return;
@@ -252,24 +248,47 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               'support_chats'
           ];
 
-          // Using batches for atomic operations and efficiency
+          // 1. Clear top-level collections
           for (const colName of collectionsToClear) {
               const q = query(collection(db, colName));
               const snapshot = await getDocs(q);
               
-              // Firestore batches allow 500 ops. We'll do chunks of 400 to be safe.
-              const chunk = 400; 
-              for (let i = 0; i < snapshot.docs.length; i += chunk) {
+              const chunkSize = 400; 
+              for (let i = 0; i < snapshot.docs.length; i += chunkSize) {
                   const batch = writeBatch(db);
-                  const chunkedDocs = snapshot.docs.slice(i, i + chunk);
+                  const chunkedDocs = snapshot.docs.slice(i, i + chunkSize);
                   chunkedDocs.forEach(doc => {
                       batch.delete(doc.ref);
                   });
                   await batch.commit();
               }
           }
+
+          // 2. Clear System Notifications (Sub-collections) for all users
+          const usersSnapshot = await getDocs(collection(db, "users"));
+          for (const userDoc of usersSnapshot.docs) {
+              const userId = userDoc.id;
+              const notifsSnapshot = await getDocs(collection(db, "users", userId, "notifications"));
+              
+              if (!notifsSnapshot.empty) {
+                  const chunkSize = 400;
+                  for (let i = 0; i < notifsSnapshot.docs.length; i += chunkSize) {
+                      const batch = writeBatch(db);
+                      const chunkedDocs = notifsSnapshot.docs.slice(i, i + chunkSize);
+                      chunkedDocs.forEach(notifDoc => {
+                          batch.delete(notifDoc.ref);
+                      });
+                      await batch.commit();
+                  }
+              }
+              
+              // Also reset read status for official notifications
+              await updateDoc(doc(db, "users", userId), {
+                  readOfficial: []
+              });
+          }
           
-          alert("تم تصفير الموقع بنجاح! الموقع جاهز الآن للبدء من جديد.");
+          alert("تم تصفير الموقع وحذف جميع الإشعارات بنجاح!");
       } catch (error) {
           console.error("Error resetting site:", error);
           alert("حدث خطأ أثناء التصفير. يرجى مراجعة وحدة التحكم.");
@@ -289,9 +308,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  // --- Support Chat Actions ---
   const handleAcceptChat = async (chat: SupportSession) => {
-      // Check if already taken to avoid race condition (basic check)
       if (chat.adminId && chat.adminId !== currentUser.id) {
           alert("تم استلام المحادثة بواسطة أدمن آخر");
           return;
@@ -336,7 +353,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
 
-  // --- Product & Category Submissions ---
   const submitProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProduct.name || !newProduct.category || !newProduct.image) return;
@@ -347,12 +363,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         image: newProduct.image!,
         bgColor: 'from-slate-700 to-slate-900',
         isFeatured: newProduct.isFeatured,
-        isAvailable: true, // Default to available
+        isTrending: newProduct.isTrending,
+        isAvailable: true,
         exchangeRate: newProduct.exchangeRate || 0,
         unitName: newProduct.unitName || ''
     });
-    // Reset to empty values
-    setNewProduct({ name: '', category: '', image: '', isFeatured: false, isAvailable: true, exchangeRate: undefined, unitName: '' });
+    setNewProduct({ name: '', category: '', image: '', isFeatured: false, isTrending: false, isAvailable: true, exchangeRate: undefined, unitName: '' });
     setShowProductForm(false);
   };
 
@@ -361,9 +377,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       updateDoc(docRef, { isFeatured: !product.isFeatured });
   };
 
+  const toggleTrending = (product: Product) => {
+      const docRef = doc(db, "products", product.id);
+      updateDoc(docRef, { isTrending: !product.isTrending });
+  };
+
   const toggleAvailability = (product: Product) => {
     const docRef = doc(db, "products", product.id);
-    const currentStatus = product.isAvailable !== false; // Default true if undefined
+    const currentStatus = product.isAvailable !== false;
     updateDoc(docRef, { isAvailable: !currentStatus });
   };
 
@@ -381,7 +402,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setShowCategoryForm(false);
   };
 
-  // --- Banner & News Submissions ---
   const submitBanner = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newBanner.image) return;
@@ -409,7 +429,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
 
-  // --- User Management Actions ---
   const handleDeleteUser = async (uid: string) => {
       if (window.confirm('هل أنت متأكد من حذف هذا المستخدم نهائياً؟')) {
          await deleteDoc(doc(db, "users", uid));
@@ -449,14 +468,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               notifBody = `تم سحب مبلغ $${amount} من رصيدك. رصيدك الحالي: $${newBalance.toFixed(2)}`;
           }
           await updateDoc(doc(db, "users", selectedUserForFunds), { balance: newBalance });
-          
-          // Send System Notification
           await sendSystemNotification(selectedUserForFunds, notifTitle, notifBody);
       }
       setShowFundsModal(false);
   };
 
-  // --- Order Management Actions ---
   const initiateRejection = (orderId: string) => {
       setSelectedOrderToReject(orderId);
       setRejectionReason('');
@@ -468,10 +484,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       
       const order = orders.find(o => o.id === selectedOrderToReject);
       if (order) {
-          // 1. Update status
           onUpdateOrderStatus(order.id, 'rejected');
-
-          // 2. Refund and Notify
           const targetUser = allUsers.find(u => 
               String(u.customId) === String(order.userId) || u.id === order.userId
           );
@@ -479,40 +492,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           if (targetUser) {
               const refundAmount = order.amountUSD;
               const newBalance = (targetUser.balance || 0) + refundAmount;
-
-              // Refund
               await updateDoc(doc(db, "users", targetUser.id), {
                   balance: newBalance
               });
-
-              // Notification with Reason
               const title = '❌ تم رفض طلبك';
               let body = `عذراً، تم رفض طلبك (${order.productName}).\nتم استرجاع مبلغ $${refundAmount} إلى محفظتك بنجاح.\nرصيدك الحالي: $${newBalance.toFixed(2)}`;
-              
               if (rejectionReason.trim()) {
                   body += `\n\nسبب الرفض: ${rejectionReason}`;
               } else {
                   body += `\n\nسبب الرفض: لم يتم تحديد سبب.`;
               }
-
               await sendSystemNotification(targetUser.id, title, body);
           }
       }
-      
       setShowRejectModal(false);
       setSelectedOrderToReject(null);
   };
 
   const handleUpdateOrder = async (orderId: string, status: 'pending' | 'completed' | 'rejected') => {
       if (status === 'rejected') {
-          // Should use initiateRejection instead for rejection flow
           initiateRejection(orderId);
           return;
       }
-
-      // Existing logic for completion (Accepted)
       onUpdateOrderStatus(orderId, status);
-      
       const order = orders.find(o => o.id === orderId);
       if (order) {
           let title = '';
@@ -520,7 +522,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           const targetUser = allUsers.find(u => 
               String(u.customId) === String(order.userId) || u.id === order.userId
           );
-
           if (status === 'completed') {
               title = '✅ تم قبول طلبك';
               body = `تهانينا! تم تنفيذ طلبك (${order.productName}) بنجاح.\nالكمية: ${order.quantity}`;
@@ -529,15 +530,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
   };
 
-  // --- Broadcast Message Action ---
   const handleSendBroadcast = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!broadcastTitle || !broadcastBody) return;
       setBroadcastSending(true);
       setBroadcastStatus('جاري الإرسال...');
-
       try {
-          // Updated: Send to global 'official_notifications' collection instead of individual users
           await addDoc(collection(db, "official_notifications"), {
               title: broadcastTitle,
               body: broadcastBody,
@@ -545,7 +543,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               date: new Date().toISOString(),
               type: 'official'
           });
-
           setBroadcastStatus('تم إرسال الرسالة لجميع المستخدمين بنجاح!');
           setBroadcastTitle('');
           setBroadcastBody('');
@@ -565,7 +562,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
   };
 
-  // --- Admin Management Actions ---
   const removeAdminPrivilege = async (uid: string) => {
      if (window.confirm('هل أنت متأكد من إزالة صلاحيات المشرف؟ سيصبح مستخدماً عادياً.')) {
          await updateDoc(doc(db, "users", uid), { isAdmin: false, permissions: [] });
@@ -585,9 +581,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleCreateAdmin = async (e: React.FormEvent) => {
       e.preventDefault();
       setAdminCreationStatus('جاري الإنشاء...');
-      
       const res = await createNewAdminUser(newAdminEmail, newAdminPass, newAdminName, newAdminPermissions);
-      
       if (res.success) {
           setAdminCreationStatus('تم إنشاء حساب المشرف بنجاح!');
           setNewAdminEmail('');
@@ -623,10 +617,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   );
 
   const renderSupport = () => {
-      // Logic: Show queued chats and active chats assigned to current admin
       const pendingChats = supportSessions.filter(c => c.status === 'queued');
       const myActiveChats = supportSessions.filter(c => c.status === 'active' && c.adminId === currentUser.id);
-
       if (activeSupportChat) {
           return (
               <div className="bg-slate-800 rounded-2xl border border-slate-700 h-[600px] flex flex-col overflow-hidden">
@@ -641,67 +633,45 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <p className="text-[10px] md:text-xs text-slate-400 font-mono">ID: {allUsers.find(u => u.id === activeSupportChat.userId)?.customId || 'Unknown'}</p>
                           </div>
                       </div>
-                      <button 
-                        onClick={handleEndChat} 
-                        className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-colors"
-                      >
-                          إنهاء
-                      </button>
+                      <button onClick={handleEndChat} className="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs md:text-sm font-bold transition-colors">إنهاء</button>
                   </div>
-                  
                   <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 bg-slate-900/50">
                       {activeSupportChat.messages.map((msg, idx) => {
-                           if (msg.role === 'system') return (
-                               <div key={idx} className="flex justify-center"><span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-500">{msg.text}</span></div>
-                           );
-                           
+                           if (msg.role === 'system') {
+                               // Customize system message for Admin
+                               const displayText = msg.text === 'أنت الآن متصل مع خدمة العملاء' ? 'أنت الآن متصل مع العميل' : msg.text;
+                               return (
+                                   <div key={idx} className="flex justify-center">
+                                       <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-500">{displayText}</span>
+                                   </div>
+                               );
+                           }
                            const isMe = msg.role === 'admin';
                            return (
                                <div key={idx} className={`flex ${isMe ? 'justify-start' : 'justify-end'}`}>
                                    <div className={`max-w-[80%] p-2 md:p-3 rounded-2xl text-xs md:text-sm ${isMe ? 'bg-slate-700 text-slate-200' : 'bg-teal-600 text-white'}`}>
                                        {msg.text}
-                                       <div className="text-[9px] opacity-50 mt-1 text-left ltr-text">
-                                           {new Date(msg.timestamp).toLocaleTimeString()}
-                                       </div>
+                                       <div className="text-[9px] opacity-50 mt-1 text-left ltr-text">{new Date(msg.timestamp).toLocaleTimeString()}</div>
                                    </div>
                                </div>
                            );
                       })}
                       <div ref={chatMessagesEndRef} />
                   </div>
-
                   <div className="p-3 md:p-4 bg-slate-900 border-t border-slate-700 flex gap-2">
-                      <input 
-                          type="text" 
-                          value={supportMessageInput}
-                          onChange={e => setSupportMessageInput(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && handleSendSupportMessage()}
-                          className="flex-1 bg-slate-800 border border-slate-600 rounded-xl px-4 py-2 text-white text-sm focus:border-teal-500 outline-none"
-                          placeholder="اكتب ردك هنا..."
-                      />
-                      <button onClick={handleSendSupportMessage} className="bg-teal-500 hover:bg-teal-600 text-white p-2.5 rounded-xl">
-                          <Send size={16} className="rtl:rotate-180" />
-                      </button>
+                      <input type="text" value={supportMessageInput} onChange={e => setSupportMessageInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendSupportMessage()} className="flex-1 bg-slate-800 border border-slate-600 rounded-xl px-4 py-2 text-white text-sm focus:border-teal-500 outline-none" placeholder="اكتب ردك هنا..." />
+                      <button onClick={handleSendSupportMessage} className="bg-teal-500 hover:bg-teal-600 text-white p-2.5 rounded-xl"><Send size={16} className="rtl:rotate-180" /></button>
                   </div>
               </div>
           );
       }
-
       return (
           <div className="space-y-4 md:space-y-6">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Headset className="text-teal-500" /> طلبات المحادثة
-              </h3>
-
+              <h3 className="text-lg font-bold text-white flex items-center gap-2"><Headset className="text-teal-500" /> طلبات المحادثة</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                  {/* Pending Queue */}
                   <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4">
-                      <h4 className="text-white font-bold mb-4 border-b border-slate-700 pb-2 flex justify-between text-sm md:text-base">
-                          قيد الانتظار <span className="bg-yellow-500 text-black text-[10px] md:text-xs px-2 rounded-full flex items-center">{pendingChats.length}</span>
-                      </h4>
-                      {pendingChats.length === 0 ? (
-                          <div className="text-center py-6 text-slate-500 text-sm">لا توجد طلبات جديدة</div>
-                      ) : (
+                      <h4 className="text-white font-bold mb-4 border-b border-slate-700 pb-2 flex justify-between text-sm md:text-base">قيد الانتظار <span className="bg-yellow-500 text-black text-[10px] md:text-xs px-2 rounded-full flex items-center">{pendingChats.length}</span></h4>
+                      {pendingChats.length === 0 ? <div className="text-center py-6 text-slate-500 text-sm">لا توجد طلبات جديدة</div> : (
                           <div className="space-y-2">
                               {pendingChats.map(chat => (
                                   <div key={chat.id} className="bg-slate-900 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
@@ -709,23 +679,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           <div className="font-bold text-white text-sm">{chat.userName}</div>
                                           <div className="text-[10px] text-slate-500">{new Date(chat.createdAt).toLocaleTimeString()}</div>
                                       </div>
-                                      <button onClick={() => handleAcceptChat(chat)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
-                                          قبول
-                                      </button>
+                                      <button onClick={() => handleAcceptChat(chat)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold">قبول</button>
                                   </div>
                               ))}
                           </div>
                       )}
                   </div>
-
-                  {/* My Active Chats */}
                   <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4">
-                      <h4 className="text-white font-bold mb-4 border-b border-slate-700 pb-2 flex justify-between text-sm md:text-base">
-                          محادثاتي النشطة <span className="bg-green-500 text-black text-[10px] md:text-xs px-2 rounded-full flex items-center">{myActiveChats.length}</span>
-                      </h4>
-                      {myActiveChats.length === 0 ? (
-                          <div className="text-center py-6 text-slate-500 text-sm">لا توجد محادثات نشطة</div>
-                      ) : (
+                      <h4 className="text-white font-bold mb-4 border-b border-slate-700 pb-2 flex justify-between text-sm md:text-base">محادثاتي النشطة <span className="bg-green-500 text-black text-[10px] md:text-xs px-2 rounded-full flex items-center">{myActiveChats.length}</span></h4>
+                      {myActiveChats.length === 0 ? <div className="text-center py-6 text-slate-500 text-sm">لا توجد محادثات نشطة</div> : (
                           <div className="space-y-2">
                               {myActiveChats.map(chat => (
                                   <div key={chat.id} className="bg-slate-900 p-3 rounded-xl border border-slate-700 flex justify-between items-center cursor-pointer hover:border-teal-500/50" onClick={() => setActiveSupportChat(chat)}>
@@ -733,9 +695,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                           <div className="font-bold text-white text-sm">{chat.userName}</div>
                                           <div className="text-[10px] text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> جاري المحادثة</div>
                                       </div>
-                                      <div className="bg-slate-800 p-2 rounded-full text-slate-400">
-                                          <MessageSquare size={16} />
-                                      </div>
+                                      <div className="bg-slate-800 p-2 rounded-full text-slate-400"><MessageSquare size={16} /></div>
                                   </div>
                               ))}
                           </div>
@@ -748,37 +708,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const renderMessages = () => (
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6 min-h-[500px]">
-          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-              <Mail className="text-teal-500" /> إرسال رسائل رسمية
-          </h3>
-          <p className="text-slate-400 text-xs md:text-sm mb-6 bg-slate-900/50 p-3 rounded-xl border border-slate-700">
-              استخدم هذه الواجهة لإرسال إشعار عام لجميع مستخدمي الموقع. سيظهر الإشعار في خانة "الرسائل الرسمية" لدى الجميع.
-          </p>
-
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><Mail className="text-teal-500" /> إرسال رسائل رسمية</h3>
+          <p className="text-slate-400 text-xs md:text-sm mb-6 bg-slate-900/50 p-3 rounded-xl border border-slate-700">استخدم هذه الواجهة لإرسال إشعار عام لجميع مستخدمي الموقع. سيظهر الإشعار في خانة "الرسائل الرسمية" لدى الجميع.</p>
           <form onSubmit={handleSendBroadcast} className="space-y-4 max-w-2xl mb-12">
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-1 font-bold">عنوان الرسالة</label>
-                  <input 
-                      type="text" 
-                      required 
-                      value={broadcastTitle} 
-                      onChange={e => setBroadcastTitle(e.target.value)} 
-                      className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white focus:border-teal-500 outline-none text-sm"
-                      placeholder="مثال: خصم خاص، صيانة، تحديث جديد..."
-                  />
+                  <input type="text" required value={broadcastTitle} onChange={e => setBroadcastTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white focus:border-teal-500 outline-none text-sm" placeholder="مثال: خصم خاص، صيانة، تحديث جديد..." />
               </div>
-
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-1 font-bold">نص الرسالة</label>
-                  <textarea 
-                      required 
-                      value={broadcastBody} 
-                      onChange={e => setBroadcastBody(e.target.value)} 
-                      className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white focus:border-teal-500 outline-none h-32 resize-none text-sm"
-                      placeholder="اكتب محتوى الرسالة هنا..."
-                  />
+                  <textarea required value={broadcastBody} onChange={e => setBroadcastBody(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white focus:border-teal-500 outline-none h-32 resize-none text-sm" placeholder="اكتب محتوى الرسالة هنا..." />
               </div>
-
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-1 font-bold">صورة (اختياري)</label>
                   <input type="file" accept="image/*" ref={messageFileInputRef} className="hidden" onChange={(e) => handleImageUpload(e, setBroadcastImage)} />
@@ -786,31 +726,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {broadcastImage ? <img src={broadcastImage} className="h-full object-contain" /> : <><Upload size={24} className="text-slate-400" /><span className="text-xs text-slate-400">اختر صورة</span></>}
                   </div>
               </div>
-
               <div className="flex items-center gap-4 pt-2">
-                  <button 
-                      type="submit" 
-                      disabled={broadcastSending}
-                      className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 text-sm"
-                  >
+                  <button type="submit" disabled={broadcastSending} className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50 text-sm">
                       {broadcastSending ? <Loader2 className="animate-spin" /> : <Send size={18} className="rtl:rotate-180" />}
                       إرسال للجميع
                   </button>
-                  {broadcastStatus && (
-                      <span className={`font-bold text-sm ${broadcastStatus.includes('خطأ') ? 'text-red-400' : 'text-green-400'}`}>
-                          {broadcastStatus}
-                      </span>
-                  )}
+                  {broadcastStatus && <span className={`font-bold text-sm ${broadcastStatus.includes('خطأ') ? 'text-red-400' : 'text-green-400'}`}>{broadcastStatus}</span>}
               </div>
           </form>
-
-          {/* List of Previous Messages */}
           <div className="border-t border-slate-700 pt-8">
               <h4 className="text-white font-bold mb-4">الرسائل المرسلة سابقاً</h4>
               <div className="space-y-3">
-                  {officialMessages.length === 0 ? (
-                      <div className="text-slate-500 text-sm text-center py-4">لا توجد رسائل سابقة</div>
-                  ) : (
+                  {officialMessages.length === 0 ? <div className="text-slate-500 text-sm text-center py-4">لا توجد رسائل سابقة</div> : (
                       officialMessages.map(msg => (
                           <div key={msg.id} className="bg-slate-900 border border-slate-700 rounded-xl p-4 flex justify-between items-center group">
                               <div className="flex gap-4">
@@ -821,13 +748,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                       <span className="text-[10px] text-slate-600 mt-1 block">{new Date(msg.date).toLocaleDateString()}</span>
                                   </div>
                               </div>
-                              <button 
-                                onClick={() => handleDeleteBroadcast(msg.id)}
-                                className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
-                                title="حذف الرسالة من عند الجميع"
-                              >
-                                  <Trash2 size={16} />
-                              </button>
+                              <button onClick={() => handleDeleteBroadcast(msg.id)} className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors" title="حذف الرسالة من عند الجميع"><Trash2 size={16} /></button>
                           </div>
                       ))
                   )}
@@ -842,23 +763,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       u.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.customId.toString().includes(userSearchQuery)
     );
-
     return (
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6 overflow-hidden">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-bold text-white">إدارة المستخدمين</h3>
           <div className="relative">
-             <input 
-               type="text" 
-               placeholder="بحث..." 
-               value={userSearchQuery}
-               onChange={(e) => setUserSearchQuery(e.target.value)}
-               className="bg-slate-900 border border-slate-600 rounded-lg py-1 px-3 text-sm text-white focus:outline-none focus:border-teal-500"
-             />
+             <input type="text" placeholder="بحث..." value={userSearchQuery} onChange={(e) => setUserSearchQuery(e.target.value)} className="bg-slate-900 border border-slate-600 rounded-lg py-1 px-3 text-sm text-white focus:outline-none focus:border-teal-500" />
              <Search size={14} className="absolute left-2 top-2 text-slate-500" />
           </div>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-right text-xs md:text-sm">
             <thead className="bg-slate-900 text-slate-400 border-b border-slate-700">
@@ -878,9 +791,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="text-[9px] md:text-[10px] text-slate-600 font-mono">ID: {u.customId}</div>
                   </td>
                   <td className="py-2 px-2 md:py-3 md:px-4 font-bold text-green-400">${u.balance.toFixed(2)}</td>
-                  <td className="py-2 px-2 md:py-3 md:px-4">
-                    {u.isBanned ? <span className="text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded text-[10px] border border-red-500/20">محظور</span> : <span className="text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded text-[10px] border border-green-500/20">نشط</span>}
-                  </td>
+                  <td className="py-2 px-2 md:py-3 md:px-4">{u.isBanned ? <span className="text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded text-[10px] border border-red-500/20">محظور</span> : <span className="text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded text-[10px] border border-green-500/20">نشط</span>}</td>
                   <td className="py-2 px-2 md:py-3 md:px-4 flex justify-center gap-1 md:gap-2">
                     <button onClick={() => openFundsModal(u.id)} className="p-1.5 md:p-2 bg-green-600/20 text-green-400 rounded-lg hover:bg-green-600 hover:text-white transition-colors" title="شحن/سحب"><DollarSign size={14} /></button>
                     <button onClick={() => toggleUserBan(u.id, u.isBanned)} className="p-1.5 md:p-2 bg-yellow-600/20 text-yellow-400 rounded-lg hover:bg-yellow-600 hover:text-white transition-colors" title="حظر/فك حظر"><Ban size={14} /></button>
@@ -905,8 +816,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
              <input type="text" placeholder="الاسم" required value={newAdminName} onChange={e => setNewAdminName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-teal-500 outline-none" />
              <input type="email" placeholder="البريد الإلكتروني" required value={newAdminEmail} onChange={e => setNewAdminEmail(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-teal-500 outline-none" />
              <input type="password" placeholder="كلمة المرور" required value={newAdminPass} onChange={e => setNewAdminPass(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg p-2 text-white text-sm focus:border-teal-500 outline-none" />
-             
-             {/* Permissions Checklist */}
              <div className="mt-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
                  <h4 className="text-white text-sm font-bold mb-3">الصلاحيات:</h4>
                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -915,23 +824,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                              <div className={`w-5 h-5 rounded border border-slate-500 flex items-center justify-center transition-colors ${newAdminPermissions.includes(perm.id) ? 'bg-teal-500 border-teal-500' : 'bg-slate-800'}`}>
                                  {newAdminPermissions.includes(perm.id) && <Check size={14} className="text-white" />}
                              </div>
-                             <input 
-                                type="checkbox" 
-                                className="hidden"
-                                checked={newAdminPermissions.includes(perm.id)}
-                                onChange={() => handlePermissionToggle(perm.id)}
-                             />
+                             <input type="checkbox" className="hidden" checked={newAdminPermissions.includes(perm.id)} onChange={() => handlePermissionToggle(perm.id)} />
                              <span className="text-slate-300 text-xs font-medium group-hover:text-white">{perm.label}</span>
                          </label>
                      ))}
                  </div>
              </div>
-
              <button type="submit" className="bg-teal-500 hover:bg-teal-600 text-white py-2 px-4 rounded-lg text-sm font-bold w-full transition-colors mt-2">إنشاء مشرف</button>
              {adminCreationStatus && <p className="text-xs text-slate-400 text-center">{adminCreationStatus}</p>}
            </form>
         </div>
-
         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
            <h3 className="text-lg font-bold text-white mb-4">قائمة المشرفين</h3>
            <div className="space-y-3">
@@ -941,9 +843,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    <div className="font-bold text-white text-sm">{admin.name} {admin.permissions ? <span className="text-[10px] text-slate-500 font-normal">(مشرف محدد)</span> : <span className="text-[10px] text-teal-400 font-normal">(مشرف عام)</span>}</div>
                    <div className="text-[10px] md:text-xs text-slate-500">{admin.email}</div>
                  </div>
-                 {currentUser.id !== admin.id && (
-                   <button onClick={() => removeAdminPrivilege(admin.id)} className="text-red-400 hover:text-red-300 text-xs font-bold self-end md:self-auto">إزالة</button>
-                 )}
+                 {currentUser.id !== admin.id && <button onClick={() => removeAdminPrivilege(admin.id)} className="text-red-400 hover:text-red-300 text-xs font-bold self-end md:self-auto">إزالة</button>}
                </div>
              ))}
            </div>
@@ -953,31 +853,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const renderOrders = () => {
-    const filteredOrders = orderFilter === 'all' 
-      ? orders 
-      : orders.filter(o => o.status === orderFilter);
-
+    const filteredOrders = orderFilter === 'all' ? orders : orders.filter(o => o.status === orderFilter);
     return (
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
            <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileText className="text-teal-500" /> إدارة الطلبات</h3>
            <div className="flex flex-wrap bg-slate-900 rounded-lg p-1 w-full md:w-auto">
               {(['pending', 'completed', 'rejected', 'all'] as const).map(f => (
-                  <button 
-                    key={f}
-                    onClick={() => setOrderFilter(f)}
-                    className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded-md text-[10px] md:text-xs font-bold transition-all text-center ${orderFilter === f ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                  >
-                      {f === 'pending' ? 'انتظار' : f === 'completed' ? 'مكتمل' : f === 'rejected' ? 'مرفوض' : 'الكل'}
-                  </button>
+                  <button key={f} onClick={() => setOrderFilter(f)} className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded-md text-[10px] md:text-xs font-bold transition-all text-center ${orderFilter === f ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'}`}>{f === 'pending' ? 'انتظار' : f === 'completed' ? 'مكتمل' : f === 'rejected' ? 'مرفوض' : 'الكل'}</button>
               ))}
            </div>
         </div>
-
         <div className="space-y-3 md:space-y-4">
-            {filteredOrders.length === 0 ? (
-                <div className="text-center py-10 text-slate-500 text-sm">لا توجد طلبات</div>
-            ) : (
+            {filteredOrders.length === 0 ? <div className="text-center py-10 text-slate-500 text-sm">لا توجد طلبات</div> : (
                 filteredOrders.map(order => (
                     <div key={order.id} className="bg-slate-900 border border-slate-700 rounded-xl p-3 md:p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
                         <div>
@@ -986,7 +874,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             <div className="text-[10px] md:text-xs text-slate-500 font-mono mt-1">Player ID: <span className="text-teal-400 bg-slate-800 px-1 rounded select-all">{order.gameId}</span></div>
                             <div className="text-[10px] md:text-xs text-slate-600 mt-1">{new Date(order.date).toLocaleString('en-US')}</div>
                         </div>
-                        
                         <div className="flex items-center gap-4 md:gap-6 w-full md:w-auto justify-between md:justify-start">
                             <div className="flex gap-4">
                                 <div className="text-center">
@@ -998,22 +885,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     <div className="font-bold text-green-400 text-sm md:text-base">${order.amountUSD}</div>
                                 </div>
                             </div>
-                        
                             {order.status === 'pending' ? (
                                 <div className="flex gap-2">
-                                    <button onClick={() => handleUpdateOrder(order.id, 'completed')} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg flex items-center justify-center gap-1 md:gap-2 font-bold text-xs md:text-sm" title="قبول">
-                                        <Check size={14} className="md:w-4 md:h-4" />
-                                        <span>قبول</span>
-                                    </button>
-                                    <button onClick={() => initiateRejection(order.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg flex items-center justify-center gap-1 md:gap-2 font-bold text-xs md:text-sm" title="رفض">
-                                        <X size={14} className="md:w-4 md:h-4" />
-                                        <span>رفض</span>
-                                    </button>
+                                    <button onClick={() => handleUpdateOrder(order.id, 'completed')} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg flex items-center justify-center gap-1 md:gap-2 font-bold text-xs md:text-sm" title="قبول"><Check size={14} className="md:w-4 md:h-4" /><span>قبول</span></button>
+                                    <button onClick={() => initiateRejection(order.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg flex items-center justify-center gap-1 md:gap-2 font-bold text-xs md:text-sm" title="رفض"><X size={14} className="md:w-4 md:h-4" /><span>رفض</span></button>
                                 </div>
                             ) : (
-                                <div className={`px-2 py-1 md:px-3 md:py-1 rounded text-[10px] md:text-xs font-bold ${order.status === 'completed' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
-                                    {order.status === 'completed' ? 'مكتمل' : 'مرفوض'}
-                                </div>
+                                <div className={`px-2 py-1 md:px-3 md:py-1 rounded text-[10px] md:text-xs font-bold ${order.status === 'completed' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>{order.status === 'completed' ? 'مكتمل' : 'مرفوض'}</div>
                             )}
                         </div>
                     </div>
@@ -1029,11 +907,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
               <div className="flex justify-between items-center mb-6">
                   <h3 className="text-lg font-bold text-white flex items-center gap-2"><Package className="text-teal-500" /> المنتجات</h3>
-                  <button onClick={() => setShowProductForm(!showProductForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2">
-                      <Plus size={16} /> إضافة منتج
-                  </button>
+                  <button onClick={() => setShowProductForm(!showProductForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2"><Plus size={16} /> إضافة منتج</button>
               </div>
-
               {showProductForm && (
                   <form onSubmit={submitProduct} className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-6 animate-fade-in-up">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-4">
@@ -1051,9 +926,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               {newProduct.image ? <img src={newProduct.image} className="h-full object-contain" /> : <><Upload className="text-slate-400 mb-2" /><span className="text-slate-500 text-xs md:text-sm">رفع صورة</span></>}
                           </div>
                       </div>
-                      <div className="flex items-center gap-2 mb-4">
-                          <input type="checkbox" id="featured" checked={newProduct.isFeatured} onChange={e => setNewProduct({...newProduct, isFeatured: e.target.checked})} className="w-4 h-4 accent-teal-500" />
-                          <label htmlFor="featured" className="text-slate-300 text-xs md:text-sm cursor-pointer">منتج مميز (يظهر في الصفحة الرئيسية)</label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div className="flex items-center gap-2">
+                              <input type="checkbox" id="featured" checked={newProduct.isFeatured} onChange={e => setNewProduct({...newProduct, isFeatured: e.target.checked})} className="w-4 h-4 accent-teal-500" />
+                              <label htmlFor="featured" className="text-slate-300 text-xs md:text-sm cursor-pointer">منتج مميز (الرئيسية)</label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                              <input type="checkbox" id="trending" checked={newProduct.isTrending} onChange={e => setNewProduct({...newProduct, isTrending: e.target.checked})} className="w-4 h-4 accent-teal-500" />
+                              <label htmlFor="trending" className="text-slate-300 text-xs md:text-sm cursor-pointer">رائج (المتجر)</label>
+                          </div>
                       </div>
                       <div className="flex justify-end gap-2">
                           <button type="button" onClick={() => setShowProductForm(false)} className="text-slate-400 hover:text-white px-3 py-1.5 text-sm">إلغاء</button>
@@ -1061,28 +942,22 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                   </form>
               )}
-
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                   {products.map(p => {
-                      // Check for availability, default true if undefined
                       const isAvailable = p.isAvailable !== false;
-                      
                       return (
                           <div key={p.id} className="bg-slate-900 border border-slate-700 rounded-xl p-3 flex gap-3 relative group">
                               <img src={p.image} className={`w-14 h-14 md:w-16 md:h-16 rounded-lg object-cover bg-slate-800 ${!isAvailable ? 'grayscale' : ''}`} />
                               <div className="flex-1">
                                   <div className="font-bold text-white text-sm">{p.name}</div>
-                                  <div className="text-[10px] md:text-xs text-slate-500">
-                                    {categories.find(c => c.id === p.category || c.dataKey === p.category)?.name || 'غير معروف'}
-                                  </div>
+                                  <div className="text-[10px] md:text-xs text-slate-500">{categories.find(c => c.id === p.category || c.dataKey === p.category)?.name || 'غير معروف'}</div>
                                   {p.exchangeRate && <div className="text-[10px] text-green-400 mt-1">1$ = {p.exchangeRate} {p.unitName}</div>}
                                   {!isAvailable && <div className="text-[10px] text-red-500 font-bold mt-1">غير متاح</div>}
                               </div>
                               <div className="absolute top-2 left-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => toggleAvailability(p)} className={`p-1.5 rounded-lg ${!isAvailable ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`} title={isAvailable ? "إخفاء (غير متاح)" : "إظهار (متاح)"}>
-                                      {isAvailable ? <Eye size={14} /> : <EyeOff size={14} />}
-                                  </button>
-                                  <button onClick={() => toggleFeatured(p)} className={`p-1.5 rounded-lg ${p.isFeatured ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-400'}`}><Star size={14} fill={p.isFeatured ? "currentColor" : "none"} /></button>
+                                  <button onClick={() => toggleAvailability(p)} className={`p-1.5 rounded-lg ${!isAvailable ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`} title={isAvailable ? "إخفاء (غير متاح)" : "إظهار (متاح)"}>{isAvailable ? <Eye size={14} /> : <EyeOff size={14} />}</button>
+                                  <button onClick={() => toggleTrending(p)} className={`p-1.5 rounded-lg ${p.isTrending ? 'bg-orange-500/20 text-orange-400' : 'bg-slate-700 text-slate-400'}`} title="رائج"><TrendingUp size={14} /></button>
+                                  <button onClick={() => toggleFeatured(p)} className={`p-1.5 rounded-lg ${p.isFeatured ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-400'}`} title="مميز"><Star size={14} fill={p.isFeatured ? "currentColor" : "none"} /></button>
                                   <button onClick={() => onDeleteProduct(p.id)} className="p-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500 hover:text-white"><Trash2 size={14} /></button>
                               </div>
                           </div>
@@ -1097,11 +972,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
           <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-white flex items-center gap-2"><Layers className="text-teal-500" /> الأقسام</h3>
-              <button onClick={() => setShowCategoryForm(!showCategoryForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2">
-                  <Plus size={16} /> إضافة قسم
-              </button>
+              <button onClick={() => setShowCategoryForm(!showCategoryForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2"><Plus size={16} /> إضافة قسم</button>
           </div>
-
           {showCategoryForm && (
               <form onSubmit={submitCategory} className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-6 animate-fade-in-up">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1111,7 +983,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <div className="mb-4">
                       <input type="file" ref={categoryFileInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, (img) => setNewCategory({...newCategory, image: img}))} />
                       <div onClick={() => categoryFileInputRef.current?.click()} className="w-full h-24 md:h-32 border-2 border-dashed border-slate-600 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors">
-                          {newCategory.image ? <img src={newCategory.image} className="h-full object-contain" /> : <><Upload className="text-slate-400 mb-2" /><span className="text-slate-500 text-xs md:text-sm">رفع صورة</span></>}
+                          {newCategory.image ? <img src={newCategory.image} className="h-full object-contain" /> : <><Upload className="text-teal-400 mb-2" /><span className="text-slate-500 text-xs md:text-sm">رفع صورة</span></>}
                       </div>
                   </div>
                   <div className="flex justify-end gap-2">
@@ -1120,7 +992,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
               </form>
           )}
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
               {categories.map(c => (
                   <div key={c.id} className="bg-slate-900 border border-slate-700 rounded-xl p-3 md:p-4 flex flex-col items-center text-center relative group">
@@ -1136,13 +1007,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const renderSettings = () => (
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
           <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><Settings className="text-teal-500" /> الإعدادات العامة</h3>
-          
           <div className="space-y-4 md:space-y-6 max-w-2xl">
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-2 font-bold">شريط الأخبار المتحرك</label>
                   <input type="text" value={tickerInput} onChange={e => setTickerInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 text-white focus:border-teal-500 outline-none text-sm" />
               </div>
-              
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-2 font-bold">رقم واتساب الطلبات (مع الرمز الدولي)</label>
                   <div className="relative">
@@ -1150,7 +1019,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input type="text" value={whatsappInput} onChange={e => setWhatsappInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 pr-10 text-white focus:border-teal-500 outline-none text-sm" placeholder="201xxxxxxxxx" />
                   </div>
               </div>
-
               <div>
                   <label className="block text-slate-300 text-xs md:text-sm mb-2 font-bold">رقم واتساب شحن المحفظة</label>
                   <div className="relative">
@@ -1158,28 +1026,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input type="text" value={walletWhatsappInput} onChange={e => setWalletWhatsappInput(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-3 pr-10 text-white focus:border-teal-500 outline-none text-sm" placeholder="201xxxxxxxxx" />
                   </div>
               </div>
-
               <div className="flex items-center gap-4">
                   <button onClick={handleSaveSettings} className="bg-teal-500 hover:bg-teal-600 text-white px-6 py-2 md:px-8 md:py-3 rounded-xl font-bold transition-colors text-sm">حفظ التغييرات</button>
                   {saveStatus && <span className="text-green-400 font-bold animate-fade-in text-sm">{saveStatus}</span>}
               </div>
-
               <div className="mt-8 border-t border-slate-700 pt-6">
-                  <h4 className="text-red-500 font-bold mb-4 flex items-center gap-2">
-                      <AlertTriangle /> منطقة الخطر
-                  </h4>
+                  <h4 className="text-red-500 font-bold mb-4 flex items-center gap-2"><AlertTriangle /> منطقة الخطر</h4>
                   <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-xl">
-                      <p className="text-slate-300 text-sm mb-4">
-                          هذا الزر سيقوم بحذف جميع البيانات من الموقع (المنتجات، الأقسام، الطلبات، الرسائل، البنرات) 
-                          <strong className="text-white"> مع الاحتفاظ بحسابات المستخدمين وأرصدتهم فقط.</strong>
-                          <br />
-                          استخدم هذا الزر فقط عند تجهيز الموقع للإطلاق الجديد.
-                      </p>
-                      <button 
-                          onClick={handleResetSite} 
-                          disabled={isResetting}
-                          className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold text-sm w-full md:w-auto flex justify-center items-center gap-2"
-                      >
+                      <p className="text-slate-300 text-sm mb-4">هذا الزر سيقوم بحذف جميع البيانات من الموقع (المنتجات، الأقسام، الطلبات، الرسائل، البنرات) و <strong className="text-white">حذف كافة تنبيهات النظام الخاصة بكل المستخدمين</strong> مع الاحتفاظ بحسابات المستخدمين وأرصدتهم فقط.</p>
+                      <button onClick={handleResetSite} disabled={isResetting} className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold text-sm w-full md:w-auto flex justify-center items-center gap-2">
                           {isResetting ? <Loader2 className="animate-spin" /> : <Trash2 size={18} />}
                           تصفير الموقع بالكامل
                       </button>
@@ -1193,11 +1048,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
           <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-white flex items-center gap-2"><ImageIcon className="text-teal-500" /> البنرات الإعلانية</h3>
-              <button onClick={() => setShowBannerForm(!showBannerForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2">
-                  <Plus size={16} /> إضافة بنر
-              </button>
+              <button onClick={() => setShowBannerForm(!showBannerForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2"><Plus size={16} /> إضافة بنر</button>
           </div>
-
           {showBannerForm && (
               <form onSubmit={submitBanner} className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-6 animate-fade-in-up">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1216,7 +1068,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
               </form>
           )}
-
           <div className="grid grid-cols-1 gap-4">
               {banners.map(b => (
                   <div key={b.id} className="relative w-full h-32 md:h-40 rounded-xl overflow-hidden group border border-slate-700">
@@ -1238,11 +1089,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <div className="bg-slate-800 rounded-2xl border border-slate-700 p-4 md:p-6">
           <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-white flex items-center gap-2"><Layout className="text-teal-500" /> أخبار وعروض</h3>
-              <button onClick={() => setShowNewsForm(!showNewsForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2">
-                  <Plus size={16} /> إضافة خبر
-              </button>
+              <button onClick={() => setShowNewsForm(!showNewsForm)} className="bg-teal-500 hover:bg-teal-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold flex items-center gap-2"><Plus size={16} /> إضافة خبر</button>
           </div>
-
           {showNewsForm && (
               <form onSubmit={submitNews} className="bg-slate-900 p-4 rounded-xl border border-slate-700 mb-6 animate-fade-in-up">
                   <div className="mb-4">
@@ -1260,7 +1108,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
               </form>
           )}
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {news.map(n => (
                   <div key={n.id} className="relative h-32 md:h-40 rounded-xl overflow-hidden group border border-slate-700">
@@ -1287,8 +1134,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {currentUser.permissions ? 'مشرف' : 'مدير عام'}
         </div>
       </div>
-
-      {/* Admin Tabs - Mobile Friendly */}
       <div className="mb-6 md:mb-8 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
         <div className="flex gap-2 min-w-max">
             {[
@@ -1304,22 +1149,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 { id: 'products', icon: Package, label: 'المنتجات' },
                 { id: 'settings', icon: Megaphone, label: 'الإعدادات' }
             ].filter(tab => hasPermission(tab.id)).map(tab => (
-                <button 
-                    key={tab.id}
-                    onClick={() => setActiveView(tab.id as any)} 
-                    className={`px-3 py-2 md:px-4 rounded-xl text-xs md:text-sm font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${activeView === tab.id ? 'bg-teal-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-                >
+                <button key={tab.id} onClick={() => setActiveView(tab.id as any)} className={`px-3 py-2 md:px-4 rounded-xl text-xs md:text-sm font-bold whitespace-nowrap transition-colors flex items-center gap-2 ${activeView === tab.id ? 'bg-teal-500 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                     <tab.icon size={14} className="md:w-4 md:h-4" /> {tab.label}
                     {tab.id === 'support' && supportSessions.filter(s => s.status === 'queued').length > 0 && (
-                        <span className="bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full">
-                            {supportSessions.filter(s => s.status === 'queued').length}
-                        </span>
+                        <span className="bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full">{supportSessions.filter(s => s.status === 'queued').length}</span>
                     )}
                 </button>
             ))}
         </div>
       </div>
-
       <div className="animate-fade-in-up">
         {activeView === 'overview' && hasPermission('overview') && renderOverview()}
         {activeView === 'support' && hasPermission('support') && renderSupport()}
@@ -1333,37 +1171,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeView === 'news' && hasPermission('news') && renderNews()}
         {activeView === 'messages' && hasPermission('messages') && renderMessages()}
       </div>
-
-      {/* Funds Modal */}
       {showFundsModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowFundsModal(false)}></div>
             <div className="bg-slate-800 w-full max-w-sm rounded-3xl border border-slate-700 shadow-2xl relative p-6 animate-fade-in-up">
                 <h3 className="text-xl font-bold text-white mb-4">{isDeposit ? 'شحن رصيد' : 'سحب رصيد'}</h3>
-                
                 <div className="flex bg-slate-900 rounded-xl p-1 mb-4">
                     <button onClick={() => setIsDeposit(true)} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${isDeposit ? 'bg-green-600 text-white' : 'text-slate-400 hover:text-white'}`}>إيداع</button>
                     <button onClick={() => setIsDeposit(false)} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${!isDeposit ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}>سحب</button>
                 </div>
-
-                <input 
-                    type="number" 
-                    value={fundsAmount}
-                    onChange={(e) => setFundsAmount(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 px-4 text-white font-bold mb-4 focus:border-teal-500 outline-none"
-                    placeholder="المبلغ ($)"
-                />
+                <input type="number" value={fundsAmount} onChange={(e) => setFundsAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 px-4 text-white font-bold mb-4 focus:border-teal-500 outline-none" placeholder="المبلغ ($)" />
                 <div className="flex gap-2 justify-end">
                     <button onClick={() => setShowFundsModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">إلغاء</button>
-                    <button onClick={confirmFundsTransaction} className={`px-6 py-2 text-white rounded-xl font-bold ${isDeposit ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}>
-                        {isDeposit ? 'تأكيد الشحن' : 'تأكيد السحب'}
-                    </button>
+                    <button onClick={confirmFundsTransaction} className={`px-6 py-2 text-white rounded-xl font-bold ${isDeposit ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}>{isDeposit ? 'تأكيد الشحن' : 'تأكيد السحب'}</button>
                 </div>
             </div>
           </div>
       )}
-
-      {/* Rejection Reason Modal */}
       {showRejectModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowRejectModal(false)}></div>
@@ -1372,22 +1196,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <h3 className="text-xl font-bold text-white flex items-center gap-2"><AlertTriangle className="text-red-500"/> رفض الطلب</h3>
                     <button onClick={() => setShowRejectModal(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
                 </div>
-                
-                <p className="text-slate-400 text-sm mb-4">
-                    يرجى كتابة سبب الرفض ليظهر للمستخدم في الإشعار.
-                </p>
-
-                <textarea 
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 px-4 text-white mb-4 focus:border-red-500 outline-none h-24 resize-none"
-                    placeholder="اكتب سبب الرفض هنا..."
-                />
+                <p className="text-slate-400 text-sm mb-4">يرجى كتابة سبب الرفض ليظهر للمستخدم في الإشعار.</p>
+                <textarea value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-xl py-3 px-4 text-white mb-4 focus:border-red-500 outline-none h-24 resize-none" placeholder="اكتب سبب الرفض هنا..." />
                 <div className="flex gap-2 justify-end">
                     <button onClick={() => setShowRejectModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">إلغاء</button>
-                    <button onClick={confirmRejection} className="px-6 py-2 text-white rounded-xl font-bold bg-red-600 hover:bg-red-700">
-                        تأكيد الرفض
-                    </button>
+                    <button onClick={confirmRejection} className="px-6 py-2 text-white rounded-xl font-bold bg-red-600 hover:bg-red-700">تأكيد الرفض</button>
                 </div>
             </div>
           </div>

@@ -1,8 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { User, Order, Tab, Language } from '../types';
-import { updateUserProfile } from '../auth';
-import { LogOut, User as UserIcon, Wallet, Settings, Clock, ChevronLeft, Edit2, Camera, X, Save, DollarSign, CreditCard, MessageCircle } from 'lucide-react';
+import { updateUserProfile, changeUserPassword } from '../auth';
+import { LogOut, User as UserIcon, Wallet, Settings, Clock, ChevronLeft, Edit2, Camera, X, Save, DollarSign, CreditCard, MessageCircle, ShieldCheck, Info, Key, CheckCircle, AlertCircle } from 'lucide-react';
 import { TRANSLATIONS } from '../constants';
 
 interface ProfileProps {
@@ -16,8 +16,8 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders, onTabChange, lang, walletWhatsAppNumber }) => {
-  // Modal State: 'none' | 'edit' | 'wallet'
-  const [activeModal, setActiveModal] = useState<'none' | 'edit' | 'wallet'>('none');
+  // Modal State: 'none' | 'edit' | 'wallet' | 'password'
+  const [activeModal, setActiveModal] = useState<'none' | 'edit' | 'wallet' | 'password'>('none');
   const t = TRANSLATIONS[lang];
   
   // Edit Profile State
@@ -25,6 +25,14 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
   const [editPhoto, setEditPhoto] = useState(user.photoURL || '');
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Password Change State
+  const [oldPass, setOldPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [passError, setPassError] = useState('');
+  const [passSuccess, setPassSuccess] = useState('');
+  const [isChangingPass, setIsChangingPass] = useState(false);
 
   const handleLogout = () => {
     onLogout();
@@ -41,6 +49,19 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
     }
   };
 
+  const resetModalState = () => {
+      setEditName(user.name);
+      setEditPhoto(user.photoURL || '');
+      setOldPass('');
+      setNewPass('');
+      setConfirmPass('');
+      setPassError('');
+      setPassSuccess('');
+      setIsSaving(false);
+      setIsChangingPass(false);
+      setActiveModal('none');
+  };
+
   const handleSaveProfile = async () => {
       setIsSaving(true);
       await updateUserProfile(user.id, {
@@ -50,6 +71,36 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
       onUpdateUser(); 
       setIsSaving(false);
       setActiveModal('none');
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setPassError('');
+      setPassSuccess('');
+      
+      if (!oldPass || !newPass || !confirmPass) {
+          setPassError(lang === 'ar' ? 'يرجى ملء جميع الحقول' : 'Please fill all fields');
+          return;
+      }
+
+      if (newPass !== confirmPass) {
+          setPassError(lang === 'ar' ? 'كلمات المرور الجديدة غير متطابقة' : 'New passwords do not match');
+          return;
+      }
+
+      setIsChangingPass(true);
+      const res = await changeUserPassword(oldPass, newPass);
+      setIsChangingPass(false);
+
+      if (!res.success) {
+          setPassError(res.message || 'Error');
+      } else {
+          setPassSuccess(lang === 'ar' ? 'تم تغيير كلمة المرور بنجاح' : 'Password changed successfully');
+          setOldPass('');
+          setNewPass('');
+          setConfirmPass('');
+          setTimeout(() => resetModalState(), 2000);
+      }
   };
 
   const menuItems = [
@@ -132,11 +183,11 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
       {/* --- EDIT MODAL --- */}
       {activeModal === 'edit' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setActiveModal('none')}></div>
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={resetModalState}></div>
             <div className="bg-slate-800 w-full max-w-md rounded-3xl border border-slate-700 shadow-2xl relative p-6 animate-fade-in-up">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-white">{t.edit_profile}</h3>
-                    <button onClick={() => setActiveModal('none')} className="text-slate-400 hover:text-white">
+                    <button onClick={resetModalState} className="text-slate-400 hover:text-white">
                         <X size={24} />
                     </button>
                 </div>
@@ -167,21 +218,29 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
 
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-slate-400 text-sm mb-1">Name</label>
+                        <label className="block text-slate-400 text-xs mb-1 font-bold">{lang === 'ar' ? 'الاسم' : 'Name'}</label>
                         <input 
                             type="text" 
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 text-white focus:border-teal-500 outline-none"
+                            className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2.5 text-white focus:border-teal-500 outline-none text-sm"
                         />
                     </div>
+
+                    <button 
+                        type="button"
+                        onClick={() => setActiveModal('password')}
+                        className="flex items-center gap-2 text-teal-400 font-bold text-xs py-2 px-1 hover:text-teal-300 transition-colors"
+                    >
+                        <Key size={14} /> {lang === 'ar' ? 'إعادة تعيين كلمة المرور' : 'Reset Password'}
+                    </button>
                     
                     <button 
                         onClick={handleSaveProfile}
                         disabled={isSaving}
-                        className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-4"
+                        className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-4 transition-all shadow-lg shadow-teal-500/20"
                     >
-                        {isSaving ? '...' : (
+                        {isSaving ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span> : (
                             <>
                                 <Save size={18} /> {t.save_changes}
                             </>
@@ -192,44 +251,126 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
         </div>
       )}
 
-      {/* --- WALLET MODAL --- */}
+      {/* --- PASSWORD MODAL --- */}
+      {activeModal === 'password' && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setActiveModal('edit')}></div>
+              <div className="bg-slate-800 w-full max-w-sm rounded-3xl border border-slate-700 shadow-2xl relative p-6 animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                          <Key className="text-teal-500" size={20} />
+                          {lang === 'ar' ? 'تغيير كلمة المرور' : 'Change Password'}
+                      </h3>
+                      <button onClick={() => setActiveModal('edit')} className="text-slate-400 hover:text-white">
+                          <X size={24} />
+                      </button>
+                  </div>
+
+                  <form onSubmit={handleUpdatePassword} className="space-y-4">
+                      <div>
+                          <label className="block text-slate-400 text-[10px] mb-1 font-bold uppercase tracking-wider">{lang === 'ar' ? 'كلمة المرور القديمة' : 'Old Password'}</label>
+                          <input 
+                              type="password" 
+                              required
+                              value={oldPass}
+                              onChange={(e) => setOldPass(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2.5 text-white focus:border-teal-500 outline-none text-sm"
+                              placeholder="••••••••"
+                          />
+                      </div>
+
+                      <div className="h-px bg-slate-700 my-2"></div>
+
+                      <div>
+                          <label className="block text-slate-400 text-[10px] mb-1 font-bold uppercase tracking-wider">{lang === 'ar' ? 'كلمة المرور الجديدة' : 'New Password'}</label>
+                          <input 
+                              type="password" 
+                              required
+                              value={newPass}
+                              onChange={(e) => setNewPass(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2.5 text-white focus:border-teal-500 outline-none text-sm"
+                              placeholder="••••••••"
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-slate-400 text-[10px] mb-1 font-bold uppercase tracking-wider">{lang === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm Password'}</label>
+                          <input 
+                              type="password" 
+                              required
+                              value={confirmPass}
+                              onChange={(e) => setConfirmPass(e.target.value)}
+                              className="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2.5 text-white focus:border-teal-500 outline-none text-sm"
+                              placeholder="••••••••"
+                          />
+                      </div>
+
+                      {passError && (
+                          <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] p-2 rounded-lg flex items-center gap-2">
+                              <AlertCircle size={14} /> {passError}
+                          </div>
+                      )}
+                      {passSuccess && (
+                          <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-[10px] p-2 rounded-lg flex items-center gap-2">
+                              <CheckCircle size={14} /> {passSuccess}
+                          </div>
+                      )}
+
+                      <button 
+                          type="submit"
+                          disabled={isChangingPass}
+                          className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 mt-4 transition-all shadow-lg shadow-teal-500/20 disabled:opacity-50"
+                      >
+                          {isChangingPass ? (
+                              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                          ) : (
+                              <>
+                                  <Save size={18} /> {lang === 'ar' ? 'تأكيد الحفظ' : 'Confirm Save'}
+                              </>
+                          )}
+                      </button>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* --- WALLET MODAL (Shortened Version) --- */}
       {activeModal === 'wallet' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setActiveModal('none')}></div>
-             <div className="bg-slate-800 w-full max-w-sm rounded-3xl border border-slate-700 shadow-2xl relative p-6 animate-fade-in-up">
-                 <div className="flex justify-between items-center mb-6">
-                     <h3 className="text-xl font-bold text-white flex items-center gap-2"><Wallet className="text-teal-500" /> {t.wallet}</h3>
+             <div className="bg-slate-800 w-full max-w-sm rounded-3xl border border-slate-700 shadow-2xl relative p-5 animate-fade-in-up">
+                 <div className="flex justify-between items-center mb-4">
+                     <h3 className="text-lg font-bold text-white flex items-center gap-2"><Wallet className="text-teal-500" size={18} /> {t.wallet}</h3>
                      <button onClick={() => setActiveModal('none')} className="text-slate-400 hover:text-white">
-                         <X size={24} />
+                         <X size={20} />
                      </button>
                  </div>
 
-                 {/* Digital Card Design */}
-                 <div className="bg-gradient-to-r from-teal-800 to-slate-900 rounded-2xl p-6 border border-teal-500/30 shadow-lg relative overflow-hidden mb-6">
-                     <div className="absolute -top-10 -right-10 w-32 h-32 bg-teal-500/20 rounded-full blur-2xl"></div>
+                 {/* Digital Card Design - More Compact */}
+                 <div className="bg-gradient-to-r from-teal-800 to-slate-900 rounded-xl p-4 border border-teal-500/30 shadow-lg relative overflow-hidden mb-4">
+                     <div className="absolute -top-10 -right-10 w-24 h-24 bg-teal-500/20 rounded-full blur-2xl"></div>
                      
-                     <div className="flex justify-between items-start mb-8">
-                         <CreditCard className="text-teal-200" size={32} />
-                         <span className="text-teal-200/50 font-mono tracking-widest text-xs">FILEX STORE</span>
+                     <div className="flex justify-between items-start mb-6">
+                         <CreditCard className="text-teal-200" size={24} />
+                         <span className="text-teal-200/50 font-mono tracking-widest text-[10px]">FILEX STORE</span>
                      </div>
                      
-                     <div className="mb-4">
-                         <span className="text-teal-200/70 text-xs">{t.balance}</span>
-                         <div className="text-3xl font-bold text-white flex items-center gap-1 font-mono">
-                             <DollarSign size={24} />
+                     <div className="mb-3">
+                         <span className="text-teal-200/70 text-[10px]">{t.balance}</span>
+                         <div className="text-2xl font-bold text-white flex items-center gap-1 font-mono">
+                             <DollarSign size={20} />
                              {user.balance.toFixed(2)}
                          </div>
                      </div>
 
                      <div className="flex justify-between items-end">
-                         <div className="text-xs text-teal-200/50">ID: {user.customId}</div>
-                         <div className="text-xs text-teal-200/50">{user.name}</div>
+                         <div className="text-[10px] text-teal-200/50">ID: {user.customId}</div>
+                         <div className="text-[10px] text-teal-200/50 truncate max-w-[120px]">{user.name}</div>
                      </div>
                  </div>
 
-                 {/* Top Up Info */}
+                 {/* Top Up Info - Compact */}
                  {walletWhatsAppNumber && (
-                    <div className="text-center animate-fade-in-up mt-2">
+                    <div className="text-center animate-fade-in-up mt-1">
                         <p className="text-slate-400 text-[10px] font-medium mb-2">
                             لشحن رصيد برجاء التواصل مع خدمة العملاء
                         </p>
@@ -237,10 +378,10 @@ const Profile: React.FC<ProfileProps> = ({ user, onLogout, onUpdateUser, orders,
                             href={`https://wa.me/${walletWhatsAppNumber}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white py-1.5 px-4 rounded-full transition-all shadow-sm hover:shadow-teal-500/20 group mx-auto"
+                            className="inline-flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white py-2 px-5 rounded-full transition-all shadow-md hover:shadow-teal-500/30 group mx-auto"
                         >
-                            <MessageCircle size={14} fill="currentColor" />
-                            <span className="font-mono text-xs font-bold pt-0.5 ltr-text">{walletWhatsAppNumber}</span>
+                            <MessageCircle size={16} fill="currentColor" />
+                            <span className="font-mono text-sm font-bold pt-0.5 ltr-text">{walletWhatsAppNumber}</span>
                         </a>
                     </div>
                  )}

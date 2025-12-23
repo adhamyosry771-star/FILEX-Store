@@ -68,8 +68,6 @@ const CustomerSupport: React.FC<CustomerSupportProps> = ({ isOpen, onClose, user
         await startSupportSession();
     } else {
         // Simple Bot Responses (Can be expanded)
-        // For now, just a placeholder alert or small local state message logic
-        // But the prompt focused on the human support flow.
     }
   };
 
@@ -87,7 +85,7 @@ const CustomerSupport: React.FC<CustomerSupportProps> = ({ isOpen, onClose, user
               id: Date.now().toString(),
               senderId: 'system',
               senderName: 'System',
-              text: 'طلب العميل التحدث مع ممثل خدمة العملاء.',
+              text: 'أنت الآن متصل مع خدمة العملاء',
               timestamp: Date.now(),
               role: 'system'
           }]
@@ -169,7 +167,6 @@ const CustomerSupport: React.FC<CustomerSupportProps> = ({ isOpen, onClose, user
 
   const renderChatView = () => (
       <div className="flex flex-col h-full">
-          {/* Chat Header inside Component is removed to avoid double headers, parent handles close */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
                {activeSession?.messages.map((msg, idx) => {
                    if (msg.role === 'system') {

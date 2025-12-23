@@ -66,7 +66,11 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     official_messages: 'الرسائل الرسمية',
     system_messages: 'رسائل النظام',
     no_notifications: 'لا توجد إشعارات حالياً',
-    mark_all_read: 'تحديد الكل كمقروء'
+    mark_all_read: 'تحديد الكل كمقروء',
+    privacy_policy: 'سياسة الخصوصية',
+    about_us: 'من نحن',
+    about_desc: 'تعرف على قصة متجر FILEX Store وأهدافنا.',
+    privacy_desc: 'كيف نحمي بياناتك وحقوقك في المتجر.'
   },
   en: {
     home: 'Home',
@@ -106,7 +110,11 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     official_messages: 'Official Messages',
     system_messages: 'System Messages',
     no_notifications: 'No notifications',
-    mark_all_read: 'Mark all as read'
+    mark_all_read: 'Mark all as read',
+    privacy_policy: 'Privacy Policy',
+    about_us: 'About Us',
+    about_desc: 'Learn about FILEX Store and our goals.',
+    privacy_desc: 'How we protect your data and rights.'
   },
   fr: {
     home: 'Accueil',
@@ -146,6 +154,10 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     official_messages: 'Messages officiels',
     system_messages: 'Messages système',
     no_notifications: 'Pas de notifications',
-    mark_all_read: 'Tout marquer comme lu'
+    mark_all_read: 'Tout marquer comme lu',
+    privacy_policy: 'Politique de confidentialité',
+    about_us: 'À propos de nous',
+    about_desc: 'Découvrez l\'histoire de FILEX Store.',
+    privacy_desc: 'Comment nous protégeons vos données.'
   }
 };

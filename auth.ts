@@ -1,6 +1,6 @@
 
 import { 
-  signInWithPopup, // Changed from signInWithRedirect
+  signInWithPopup, 
   GoogleAuthProvider, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -9,7 +9,10 @@ import {
   User as FirebaseUser,
   getAuth,
   sendPasswordResetEmail,
-  deleteUser
+  deleteUser,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  updatePassword
 } from "firebase/auth";
 import { initializeApp, deleteApp } from "firebase/app";
 import { doc, getDoc, setDoc, updateDoc, increment, runTransaction } from "firebase/firestore";
@@ -93,33 +96,25 @@ const mapUser = async (fbUser: FirebaseUser): Promise<User> => {
 
 // --- Admin Creation ---
 export const createNewAdminUser = async (email: string, pass: string, name: string, permissions: string[] = []) => {
-    // We use a secondary app instance to create a user WITHOUT logging out the current admin
     const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
     const secondaryAuth = getAuth(secondaryApp);
 
     try {
         const result = await createUserWithEmailAndPassword(secondaryAuth, email, pass);
-        
-        // Generate ID manually here or use same transaction logic (simplified for secondary)
         const customId = Math.floor(20000 + Math.random() * 10000);
-
-        // Save to Firestore via main app DB instance (as admin is authorized)
         await setDoc(doc(db, "users", result.user.uid), {
             name: name,
             email: email,
             isAdmin: true,
-            permissions: permissions, // Save selected permissions
+            permissions: permissions,
             balance: 0,
             customId: customId,
             joinDate: new Date().toISOString(),
             isBanned: false,
             photoURL: null
         });
-
-        // Cleanup
         await signOut(secondaryAuth);
         await deleteApp(secondaryApp);
-
         return { success: true };
     } catch (error: any) {
         await deleteApp(secondaryApp);
@@ -130,18 +125,15 @@ export const createNewAdminUser = async (email: string, pass: string, name: stri
     }
 };
 
-
 // --- Google Auth ---
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   try {
-    // Changed to Popup to maintain state and allow "Complete Profile" flow
     const result = await signInWithPopup(auth, provider);
     const user = await mapUser(result.user);
     return { success: true, user: user };
   } catch (error: any) {
     let msg = error.message;
-    // Translate common errors
     if (error.code === 'auth/unauthorized-domain') {
         msg = "هذا النطاق غير مصرح به في إعدادات Firebase (Authorized Domains).";
     } else if (error.code === 'auth/popup-closed-by-user') {
@@ -158,15 +150,11 @@ export const registerWithEmail = async (email: string, pass: string, name: strin
   try {
     const result = await createUserWithEmailAndPassword(auth, email, pass);
     const user = await mapUser(result.user);
-    
-    // Update the name and photo
     await updateDoc(doc(db, "users", user.id), {
         name: name,
         photoURL: photoURL || null
     });
-    
     const updatedUser = { ...user, name, photoURL: photoURL || null, isNewUser: true };
-
     return { success: true, user: updatedUser };
   } catch (error: any) {
     let msg = "حدث خطأ أثناء التسجيل";
@@ -179,21 +167,16 @@ export const registerWithEmail = async (email: string, pass: string, name: strin
 export const loginWithEmail = async (email: string, pass: string) => {
   try {
     const result = await signInWithEmailAndPassword(auth, email, pass);
-    
-    // CRITICAL FIX: Check if Firestore document exists. 
-    // If not, it means Admin deleted the user from Dashboard, so we delete Auth credential.
     const userDocRef = doc(db, "users", result.user.uid);
     const userDocSnap = await getDoc(userDocRef);
-
     if (!userDocSnap.exists()) {
         try {
-            await deleteUser(result.user); // Delete from Firebase Auth
+            await deleteUser(result.user);
         } catch (e) {
-            await signOut(auth); // Fallback if delete fails
+            await signOut(auth);
         }
         return { success: false, message: "هذا الحساب غير موجود (تم حذفه)." };
     }
-
     const user = await mapUser(result.user);
     if (user.isBanned) {
         await signOut(auth);
@@ -208,7 +191,7 @@ export const loginWithEmail = async (email: string, pass: string) => {
   }
 };
 
-// --- Password Reset ---
+// --- Password Change/Reset ---
 export const resetPassword = async (email: string) => {
     try {
         await sendPasswordResetEmail(auth, email);
@@ -221,15 +204,32 @@ export const resetPassword = async (email: string) => {
     }
 }
 
+export const changeUserPassword = async (oldPass: string, newPass: string) => {
+    const user = auth.currentUser;
+    if (!user || !user.email) return { success: false, message: "لم يتم العثور على المستخدم" };
+    
+    try {
+        // Re-authenticate
+        const credential = EmailAuthProvider.credential(user.email, oldPass);
+        await reauthenticateWithCredential(user, credential);
+        // Update
+        await updatePassword(user, newPass);
+        return { success: true };
+    } catch (error: any) {
+        let msg = "فشل تغيير كلمة المرور";
+        if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') msg = "كلمة المرور القديمة غير صحيحة";
+        else if (error.code === 'auth/weak-password') msg = "كلمة المرور الجديدة ضعيفة جداً";
+        return { success: false, message: msg };
+    }
+};
+
 // --- Profile Update ---
 export const updateUserProfile = async (uid: string, updates: { name?: string; photoURL?: string }) => {
     try {
         const docRef = doc(db, "users", uid);
-        // Only update defined fields
         const dataToUpdate: any = {};
         if (updates.name !== undefined) dataToUpdate.name = updates.name;
         if (updates.photoURL !== undefined) dataToUpdate.photoURL = updates.photoURL;
-        
         await updateDoc(docRef, dataToUpdate);
         return { success: true };
     } catch (e) {
@@ -244,9 +244,6 @@ export const logoutUser = async () => {
 export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
   return onAuthStateChanged(auth, async (fbUser) => {
     if (fbUser) {
-      // Small optimization: If we are not in the login flow (which handles deletions), 
-      // mapUser will recreate the doc if missing (e.g. Google Sign In).
-      // For strictly Email login deletion handling, the loginWithEmail function covers it.
       const user = await mapUser(fbUser);
       if (user.isBanned) {
           signOut(auth);

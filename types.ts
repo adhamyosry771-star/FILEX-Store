@@ -6,6 +6,7 @@ export interface Product {
   image: string;
   bgColor: string; 
   isFeatured?: boolean;
+  isTrending?: boolean; // New field for Trending Apps
   isAvailable?: boolean; // New field: true = Available, false = Sold Out
   exchangeRate?: number; // How many units per 1 USD (e.g., 1000 Gems)
   unitName?: string; // e.g., "شدة", "ماسة", "دولار"
@@ -18,6 +19,8 @@ export enum Tab {
   PROFILE = 'profile',
   ADMIN = 'admin',
   NOTIFICATIONS = 'notifications',
+  PRIVACY = 'privacy',
+  ABOUT = 'about'
 }
 
 export type Language = 'ar' | 'en' | 'fr';

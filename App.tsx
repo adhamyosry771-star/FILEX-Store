@@ -12,9 +12,11 @@ import OrderHistoryPage from './components/OrderHistoryPage';
 import AdminDashboard from './components/AdminDashboard';
 import NotificationsPage from './components/NotificationsPage';
 import Ticker from './components/Ticker';
+import PrivacyPage from './components/PrivacyPage';
+import AboutPage from './components/AboutPage';
 import { Product, Tab, User, Category, Order, BannerData, NewsItem, Language, Notification } from './types';
 import { subscribeToAuthChanges, logoutUser, updateUserProfile } from './auth';
-import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search, Camera, Save } from 'lucide-react';
+import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search, Camera, Save, TrendingUp } from 'lucide-react';
 import { db } from './firebase';
 import { collection, onSnapshot, doc, updateDoc, query, orderBy, setDoc, deleteDoc, addDoc, writeBatch, arrayUnion } from 'firebase/firestore';
 import { TRANSLATIONS } from './constants';
@@ -330,12 +332,21 @@ function App() {
     setPurchaseModalOpen(true);
   };
 
+  // Logic to jump to category and open modal for trending app
+  const handleTrendingClick = (product: Product) => {
+      const category = categories.find(c => c.id === product.category || c.dataKey === product.category);
+      if (category) {
+          setSelectedCategory(category);
+          openPurchaseModal(product);
+      }
+  };
+
   const handleConfirmPurchase = async (isWhatsApp: boolean) => {
     if (!user || !selectedProduct) return;
     
     const amount = parseFloat(purchaseAmount);
     if (isNaN(amount) || amount <= 0) {
-        setNotification("يرجى إدخال مبلغ صحيح");
+        setNotification("يرجى إدخل مبلغ صحيح");
         setTimeout(() => setNotification(null), 2000);
         return;
     }
@@ -464,6 +475,11 @@ function App() {
             {news.length > 0 ? (
                 news.map(item => (
                     <div key={item.id} className="relative w-full h-40 rounded-3xl overflow-hidden group shadow-lg border border-slate-200 dark:border-slate-700/50">
+                        {/* Shimmer Light Effect Layer - 3 Seconds (News) */}
+                        <div className="absolute inset-0 z-10 pointer-events-none overflow-hidden">
+                            <div className="absolute top-0 -left-[100%] w-full h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-25deg] animate-banner-sheen" />
+                        </div>
+
                         {/* Image */}
                         <img src={item.image} alt="News" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                         
@@ -494,6 +510,39 @@ function App() {
   // --- Store Tab ---
   const renderStore = () => {
     if (!selectedCategory) {
+      const trendingProducts = products.filter(p => p.isTrending);
+      // To create seamless marquee effect, double the array
+      const doubleTrending = [...trendingProducts, ...trendingProducts];
+      
+      const firstCategory = categories.length > 0 ? categories[0] : null;
+      const otherCategories = categories.slice(1);
+
+      // Fix TypeScript error by adding optional key to CategoryButton props
+      const CategoryButton = ({ cat }: { cat: Category, key?: React.Key }) => (
+          <button 
+            onClick={() => setSelectedCategory(cat)}
+            className={`relative w-full h-32 rounded-3xl overflow-hidden group ${lang === 'ar' ? 'text-right' : 'text-left'} shadow-xl border border-slate-200 dark:border-slate-700/50 transform transition-all hover:scale-[1.02] mb-4`}
+          >
+            <img 
+                src={cat.image} 
+                alt={cat.name} 
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+            />
+            {/* Luxury Dark Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent opacity-90" />
+            
+            <div className="absolute inset-0 p-6 flex items-center justify-between z-10">
+                <div>
+                    <h3 className="text-2xl font-bold text-white mb-1 drop-shadow-md">{cat.name}</h3>
+                    <p className="text-slate-300 text-sm font-medium">{t.browse_store}</p>
+                </div>
+                <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/10 group-hover:bg-white group-hover:text-slate-900 transition-all">
+                        <ChevronRight className={`${lang === 'ar' ? 'rotate-180' : ''}`} size={24} />
+                </div>
+            </div>
+          </button>
+      );
+
       return (
         <div className="px-4 pb-20">
           <div className="flex items-center gap-2 mb-6 mt-2">
@@ -501,32 +550,52 @@ function App() {
              <h2 className="text-xl font-bold text-slate-800 dark:text-white">{t.browse_store}</h2>
           </div>
           
-          <div className="grid grid-cols-1 gap-4">
-             {categories.map(cat => (
-                 <button 
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`relative w-full h-32 rounded-3xl overflow-hidden group ${lang === 'ar' ? 'text-right' : 'text-left'} shadow-xl border border-slate-200 dark:border-slate-700/50 transform transition-all hover:scale-[1.02]`}
-                 >
-                    <img 
-                        src={cat.image} 
-                        alt={cat.name} 
-                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                    />
-                    {/* Luxury Dark Overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent opacity-90" />
-                    
-                    <div className="absolute inset-0 p-6 flex items-center justify-between z-10">
-                        <div>
-                            <h3 className="text-2xl font-bold text-white mb-1 drop-shadow-md">{cat.name}</h3>
-                            <p className="text-slate-300 text-sm font-medium">{t.browse_store}</p>
-                        </div>
-                        <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white border border-white/10 group-hover:bg-white group-hover:text-slate-900 transition-all">
-                             <ChevronRight className={`${lang === 'ar' ? 'rotate-180' : ''}`} size={24} />
-                        </div>
-                    </div>
-                 </button>
+          <div className="flex flex-col">
+             {/* Render First Category */}
+             {firstCategory && <CategoryButton cat={firstCategory} />}
+
+             {/* Trending Apps Section - Injected after the first category */}
+             {trendingProducts.length > 0 && (
+                 <div className="mt-2 mb-6 overflow-hidden">
+                     <div className="flex items-center gap-2 mb-4">
+                         <TrendingUp className="text-teal-400" />
+                         <h2 className="text-lg font-bold text-slate-800 dark:text-white">التطبيقات الرائجة</h2>
+                     </div>
+
+                     <div className="relative w-full overflow-hidden pb-4">
+                         <div className="flex gap-2 animate-trending-marquee w-max py-2 hover:pause-marquee">
+                             {doubleTrending.map((p, idx) => (
+                                 <div 
+                                   key={`${p.id}-${idx}`} 
+                                   onClick={() => handleTrendingClick(p)}
+                                   className="flex flex-col items-center shrink-0 w-24 cursor-pointer group"
+                                 >
+                                     <div className="relative w-16 h-16 mb-2 rounded-full bg-[#1e293b] border border-teal-500/20 p-0.5 shadow-lg shadow-teal-500/5 overflow-hidden group-hover:border-teal-400 group-hover:scale-110 transition-all">
+                                         <div className="w-full h-full rounded-full bg-slate-800 overflow-hidden relative">
+                                              <img 
+                                                 src={p.image} 
+                                                 alt={p.name} 
+                                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                                             />
+                                             <div className="absolute inset-0 bg-black/10 z-10 pointer-events-none rounded-full" />
+                                             <div className="absolute top-0 -left-[100%] w-full h-full bg-gradient-to-r from-transparent via-white/50 to-transparent skew-x-[-25deg] animate-app-sheen" />
+                                         </div>
+                                     </div>
+                                     <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 text-center line-clamp-1 group-hover:text-teal-400 px-1">
+                                         {p.name}
+                                     </span>
+                                 </div>
+                             ))}
+                         </div>
+                     </div>
+                 </div>
+             )}
+
+             {/* Render Rest of Categories */}
+             {otherCategories.map(cat => (
+                 <CategoryButton key={cat.id} cat={cat} />
              ))}
+
              {categories.length === 0 && (
                  <div className="text-center py-10 text-slate-500">
                      {t.no_products}
@@ -643,6 +712,22 @@ function App() {
             />
         )}
 
+        {/* Privacy Page */}
+        {activeTab === Tab.PRIVACY && (
+            <PrivacyPage 
+                onBack={() => setActiveTab(Tab.PROFILE)}
+                lang={lang}
+            />
+        )}
+
+        {/* About Page */}
+        {activeTab === Tab.ABOUT && (
+            <AboutPage 
+                onBack={() => setActiveTab(Tab.PROFILE)}
+                lang={lang}
+            />
+        )}
+
         {/* Redirect to login if accessing protected tabs without user */}
         {(activeTab === Tab.ORDERS || activeTab === Tab.PROFILE || activeTab === Tab.NOTIFICATIONS) && !user && activeTab !== Tab.PROFILE && (
             <Auth onLogin={handleLogin} />
@@ -736,7 +821,7 @@ function App() {
       {purchaseModalOpen && selectedProduct && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setPurchaseModalOpen(false)}></div>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl border border-slate-200 dark:border-slate-700 shadow-2xl relative p-6 animate-fade-in-up">
+            <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-3xl border border-slate-200 dark:border-teal-500/30 dark:border-slate-700 shadow-2xl relative p-6 animate-fade-in-up">
                 <button onClick={() => setPurchaseModalOpen(false)} className={`absolute top-4 ${lang === 'ar' ? 'left-4' : 'right-4'} text-slate-400 hover:text-slate-600 dark:hover:text-white`}>
                     <X size={24} />
                 </button>
@@ -816,6 +901,40 @@ function App() {
       )}
       
       <CustomerSupport isOpen={isSupportOpen} onClose={() => setIsSupportOpen(false)} user={user} />
+      
+      {/* Global CSS for Animations */}
+      <style>{`
+          @keyframes banner-sheen {
+              0% { left: -100%; }
+              30% { left: 120%; }
+              100% { left: 120%; }
+          }
+          /* 3 Seconds Sheen for Banners & News */
+          .animate-banner-sheen {
+              animation: banner-sheen 3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+          }
+          /* 2 Seconds Sheen for App Circles */
+          .animate-app-sheen {
+              animation: banner-sheen 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+          }
+          @keyframes trending-marquee {
+              0% { transform: translateX(0); }
+              100% { transform: translateX(${lang === 'ar' ? '50%' : '-50%'}); }
+          }
+          .animate-trending-marquee {
+              animation: trending-marquee 25s linear infinite;
+          }
+          .hover\\:pause-marquee:hover {
+              animation-play-state: paused;
+          }
+          @keyframes fade-in {
+              from { opacity: 0; transform: translateY(10px); }
+              to { opacity: 1; transform: translateY(0); }
+          }
+          .animate-fade-in {
+              animation: fade-in 0.5s ease-out forwards;
+          }
+      `}</style>
     </div>
   );
 }

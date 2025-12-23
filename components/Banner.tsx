@@ -23,7 +23,7 @@ const Banner: React.FC<BannerProps> = ({ banners }) => {
 
   if (banners.length === 0) {
     return (
-        <div className="w-full aspect-[2.5/1] bg-slate-800 rounded-2xl animate-pulse flex items-center justify-center border border-slate-700 my-4">
+        <div className="w-full aspect-[2/1] md:aspect-[3/1] lg:aspect-[4/1] bg-slate-800 rounded-2xl animate-pulse flex items-center justify-center border border-slate-700 my-4">
              <Loader2 className="animate-spin text-slate-600" size={32} />
         </div>
     );
