@@ -22,7 +22,7 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
   useEffect(() => {
     if (isMenuOpen) {
       document.body.style.overflow = 'hidden';
-      document.body.style.touchAction = 'none'; // منع السحب في المتصفحات التي تدعمها
+      document.body.style.touchAction = 'none';
       document.body.style.overscrollBehavior = 'none';
     } else {
       document.body.style.overflow = '';
@@ -72,10 +72,8 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
 
             {/* Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
-              
-              {/* Balance Display */}
               {user && (
-                <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-200 dark:border-teal-500/30 shadow-sm hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors">
+                <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-200 dark:border-teal-500/30 shadow-sm">
                     <div className="bg-green-500/10 p-1 rounded-full">
                          <DollarSign size={14} className="text-green-600 dark:text-green-400" />
                     </div>
@@ -100,7 +98,7 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
                     <span className="text-sm font-bold">{t.login}</span>
                 </div>
                ) : (
-                  <div className="w-9 h-9 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center border border-teal-500/50 text-xs font-bold overflow-hidden cursor-pointer hover:border-teal-400 transition-colors" onClick={() => onTabChange(Tab.PROFILE)}>
+                  <div className="w-9 h-9 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center border border-teal-500/50 text-xs font-bold overflow-hidden cursor-pointer" onClick={() => onTabChange(Tab.PROFILE)}>
                       {user.photoURL ? (
                           <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                       ) : (
@@ -115,105 +113,105 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
 
       {/* Sidebar / Drawer */}
       <div className={`fixed inset-0 z-[100] transition-all duration-300 ${isMenuOpen ? 'visible' : 'invisible'}`}>
-         {/* Overlay - Slightly more transparent to blend in */}
+         {/* Overlay - touch-none added to lock everything */}
          <div 
             className={`absolute inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 touch-none ${isMenuOpen ? 'opacity-100' : 'opacity-0'}`}
             onClick={toggleMenu}
          ></div>
          
-         {/* Side Menu - Increased Transparency with High Blur */}
-         <div className={`absolute top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} h-full w-72 bg-white/20 dark:bg-[#0f172a]/30 backdrop-blur-2xl border-l border-white/10 shadow-2xl p-6 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : (lang === 'ar' ? 'translate-x-full' : '-translate-x-full')} flex flex-col`}>
+         {/* Side Menu - Width reduced to 240px for a better look on mobile and browser */}
+         <div className={`absolute top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} h-[100dvh] w-[240px] bg-white/20 dark:bg-[#0f172a]/40 backdrop-blur-2xl border-l border-white/10 shadow-2xl p-4 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : (lang === 'ar' ? 'translate-x-full' : '-translate-x-full')} flex flex-col overflow-hidden`}>
              
-             {/* Header */}
-             <div className="flex justify-between items-center mb-8 shrink-0">
-                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white drop-shadow-md">{t.menu}</h2>
-                 <button onClick={toggleMenu} className="p-2 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 rounded-full text-slate-800 dark:text-slate-200 transition-colors">
-                     <X size={20} />
+             {/* Header - Compact */}
+             <div className="flex justify-between items-center mb-5 shrink-0">
+                 <h2 className="text-lg font-bold text-slate-900 dark:text-white drop-shadow-md">{t.menu}</h2>
+                 <button onClick={toggleMenu} className="p-1.5 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 rounded-full text-slate-800 dark:text-slate-200 transition-colors">
+                     <X size={18} />
                  </button>
              </div>
 
              {/* Navigation Section */}
-             <div className="flex-1 flex flex-col gap-2 overflow-y-auto no-scrollbar pb-6">
+             <div className="flex-1 flex flex-col gap-1.5 overflow-y-auto no-scrollbar pb-4">
                  
-                 {/* Balance - Floating Glass Card */}
+                 {/* Balance - Compact Card */}
                  {user && (
-                    <div className="mb-6 p-4 bg-white/10 dark:bg-white/5 rounded-2xl border border-white/20 dark:border-white/10 flex justify-between items-center shadow-lg backdrop-blur-md">
-                        <span className="text-slate-700 dark:text-slate-200 font-bold">{t.balance}:</span>
-                        <div className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold text-xl">
-                            <DollarSign size={20} />
+                    <div className="mb-4 p-3 bg-white/10 dark:bg-white/5 rounded-xl border border-white/20 dark:border-white/10 flex justify-between items-center shadow-lg backdrop-blur-md">
+                        <span className="text-slate-700 dark:text-slate-200 font-bold text-xs">{t.balance}:</span>
+                        <div className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold text-base">
+                            <DollarSign size={14} />
                             {user.balance.toFixed(2)}
                         </div>
                     </div>
                  )}
 
-                 {/* Language Switcher */}
-                 <div className="flex gap-2 mb-6 justify-center bg-white/10 dark:bg-white/5 p-2 rounded-2xl border border-white/10 shrink-0">
+                 {/* Language Switcher - Very Compact */}
+                 <div className="flex gap-1.5 mb-4 justify-center bg-white/10 dark:bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
                     {(['ar', 'en', 'fr'] as Language[]).map((l) => (
                         <button
                             key={l}
                             onClick={() => setLang(l)}
-                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex-1 ${lang === l ? 'bg-teal-500 text-white shadow-lg shadow-teal-500/20' : 'text-slate-700 dark:text-slate-400 hover:bg-white/20'}`}
+                            className={`px-1.5 py-1 rounded-lg text-[9px] font-bold transition-all flex-1 ${lang === l ? 'bg-teal-500 text-white shadow-md' : 'text-slate-700 dark:text-slate-400 hover:bg-white/20'}`}
                         >
                             {l.toUpperCase()}
                         </button>
                     ))}
                  </div>
 
-                 {/* Main Links - Spacious */}
-                 <button onClick={() => handleNavClick(Tab.HOME)} className="w-full flex items-center gap-4 p-4 rounded-2xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-base group">
-                     <Home size={22} className="text-teal-500 group-hover:scale-110 transition-transform" /> {t.home}
+                 {/* Main Links - Narrowed padding */}
+                 <button onClick={() => handleNavClick(Tab.HOME)} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-xs group">
+                     <Home size={18} className="text-teal-500 shrink-0" /> <span className="truncate">{t.home}</span>
                  </button>
                  
-                 <button onClick={() => handleNavClick(Tab.PROFILE)} className="w-full flex items-center gap-4 p-4 rounded-2xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-base group">
-                     <UserIcon size={22} className="text-teal-500 group-hover:scale-110 transition-transform" /> {t.profile}
+                 <button onClick={() => handleNavClick(Tab.PROFILE)} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-xs group">
+                     <UserIcon size={18} className="text-teal-500 shrink-0" /> <span className="truncate">{t.profile}</span>
                  </button>
 
-                 <button onClick={() => handleNavClick(Tab.PRIVACY)} className="w-full flex items-center gap-4 p-4 rounded-2xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-base group">
-                     <ShieldAlert size={22} className="text-teal-500 group-hover:scale-110 transition-transform" /> {t.privacy_policy}
+                 <button onClick={() => handleNavClick(Tab.PRIVACY)} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-xs group">
+                     <ShieldAlert size={18} className="text-teal-500 shrink-0" /> <span className="truncate">{t.privacy_policy}</span>
                  </button>
 
-                 <button onClick={() => handleNavClick(Tab.ABOUT)} className="w-full flex items-center gap-4 p-4 rounded-2xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-base group">
-                     <Info size={22} className="text-teal-500 group-hover:scale-110 transition-transform" /> {t.about_us}
+                 <button onClick={() => handleNavClick(Tab.ABOUT)} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-xs group">
+                     <Info size={18} className="text-teal-500 shrink-0" /> <span className="truncate">{t.about_us}</span>
                  </button>
 
                  <button 
                     onClick={() => { onOpenChat(); toggleMenu(); }}
-                    className="w-full flex items-center gap-4 p-4 rounded-2xl text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 transition-colors font-bold text-base group"
+                    className="w-full flex items-center gap-3 p-2.5 rounded-xl text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 transition-colors font-bold text-xs group"
                  >
-                     <Headset size={22} className="group-hover:scale-110 transition-transform" /> {t.customer_service}
+                     <Headset size={18} className="shrink-0" /> <span className="truncate">{t.customer_service}</span>
                  </button>
 
-                 <div className="my-4 border-t border-white/20 dark:border-white/10 shrink-0"></div>
+                 <div className="my-2 border-t border-white/20 dark:border-white/10 shrink-0"></div>
 
                  {user?.isAdmin && (
                     <button 
                         onClick={() => handleNavClick(Tab.ADMIN)}
-                        className="w-full flex items-center gap-4 p-4 rounded-2xl bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20 font-bold text-base group"
+                        className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-teal-500/10 text-teal-700 dark:text-teal-300 border border-teal-500/20 font-bold text-xs group"
                     >
-                        <ShieldCheck size={22} className="group-hover:scale-110 transition-transform" /> 
-                        <span>{t.admin}</span>
+                        <ShieldCheck size={18} className="shrink-0" /> 
+                        <span className="truncate">{t.admin}</span>
                     </button>
                  )}
 
                  {user && (
-                    <button onClick={() => { onLogout(); toggleMenu(); }} className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-500 dark:text-red-400 hover:bg-red-500/10 font-bold text-base group">
-                        <LogOut size={22} className="group-hover:translate-x-1 transition-transform" /> {t.logout}
+                    <button onClick={() => { onLogout(); toggleMenu(); }} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-red-500 dark:text-red-400 hover:bg-red-500/10 font-bold text-xs group">
+                        <LogOut size={18} className="shrink-0" /> <span className="truncate">{t.logout}</span>
                     </button>
                  )}
              </div>
 
-             {/* Footer - Pinned to bottom */}
-             <div className="pt-6 mt-auto border-t border-white/20 dark:border-white/10 text-center shrink-0">
+             {/* Footer - Pinned and Very Compact */}
+             <div className="pt-3 mt-auto border-t border-white/20 dark:border-white/10 text-center shrink-0">
                 <a 
                     href="https://filex-developer.vercel.app/" 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-mono font-bold tracking-wider py-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                    className="flex items-center justify-center gap-2 text-teal-600 dark:text-teal-400 text-[9px] font-mono font-bold tracking-wider py-1 rounded-lg hover:bg-white/10 transition-colors"
                 >
-                    <Code size={14} />
+                    <Code size={12} />
                     <span>{t.created_by}</span>
                 </a>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide mt-1 select-none pb-2">
+                <div className="text-[7px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 pb-0.5">
                     {t.all_rights_reserved}
                 </div>
              </div>

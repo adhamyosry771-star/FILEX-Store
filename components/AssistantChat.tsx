@@ -12,7 +12,7 @@ interface AssistantChatProps {
 const AssistantChat: React.FC<AssistantChatProps> = ({ isOpen, onClose }) => {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [messages, setMessages] = useState<any[]>([
+  const [messages, setMessages] = useState<{role: string, text: string}[]>([
     { role: 'model', text: 'مرحباً بك في FILEX Store! 🌊\nكيف يمكنني مساعدتك اليوم بخصوص شحن الألعاب أو البطاقات؟' }
   ]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -32,6 +32,7 @@ const AssistantChat: React.FC<AssistantChatProps> = ({ isOpen, onClose }) => {
 
     const userMsg = input.trim();
     setInput('');
+    // Store only plain objects to avoid circular references in state serialization
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setLoading(true);
 
@@ -46,19 +47,21 @@ const AssistantChat: React.FC<AssistantChatProps> = ({ isOpen, onClose }) => {
         If asked about payment, mention we accept Visa, MasterCard, and local wallets.
       `;
 
-      const response = await ai.models.generateContent({
+      const result = await ai.models.generateContent({
         model: modelName,
         contents: [
             { role: 'user', parts: [{ text: systemPrompt + "\n\nUser Question: " + userMsg }] }
         ]
       });
 
-      // استخلاص النص بشكل آمن لتجنب أخطاء JSON circular references
-      const text = response.text ? String(response.text) : "عذراً، لم أستطع فهم ذلك تماماً. هل يمكنك إعادة صياغة سؤالك؟";
-      setMessages(prev => [...prev, { role: 'model', text }]);
+      // Safely extract the text. Do not store the whole result object.
+      const responseText = result.text ? String(result.text).trim() : "عذراً، لم أستطع فهم ذلك تماماً. هل يمكنك إعادة صياغة سؤالك؟";
+      
+      setMessages(prev => [...prev, { role: 'model', text: responseText }]);
 
     } catch (error: any) {
-      console.error("Chat API Error occurred"); // تجنب طباعة كائن الخطأ الكامل الذي قد يحتوي على مراجع دائرية
+      // Avoid logging full error objects which might have circular references
+      console.error("Assistant API Error"); 
       setMessages(prev => [...prev, { role: 'model', text: 'عذراً، لا يمكنني الرد حالياً. يرجى التحقق من الاتصال.' }]);
     } finally {
       setLoading(false);
