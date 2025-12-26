@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Menu, X, ShieldCheck, Home, User as UserIcon, LogOut, DollarSign, Headset, Code, ShieldAlert, Info } from 'lucide-react';
+import { Bell, Menu, X, ShieldCheck, Home, User as UserIcon, LogOut, DollarSign, Headset, Code, ShieldAlert, Info, Snowflake } from 'lucide-react';
 import { Tab, User as UserType, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 
@@ -12,13 +12,14 @@ interface HeaderProps {
   setLang: (lang: Language) => void;
   unreadNotifications: number;
   onLogout: () => void;
+  isSnowing: boolean;
+  setIsSnowing: (val: boolean) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, setLang, unreadNotifications, onLogout }) => {
+const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, setLang, unreadNotifications, onLogout, isSnowing, setIsSnowing }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const t = TRANSLATIONS[lang];
 
-  // منع التمرير عند فتح القائمة الجانبية
   useEffect(() => {
     if (isMenuOpen) {
       document.body.style.overflow = 'hidden';
@@ -49,7 +50,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             
-            {/* Logo Area */}
             <div className="flex items-center gap-3">
               <button 
                 onClick={toggleMenu}
@@ -70,7 +70,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2 sm:gap-4">
               {user && (
                 <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-200 dark:border-teal-500/30 shadow-sm">
@@ -111,18 +110,14 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
         </div>
       </header>
 
-      {/* Sidebar / Drawer */}
       <div className={`fixed inset-0 z-[100] transition-all duration-300 ${isMenuOpen ? 'visible' : 'invisible'}`}>
-         {/* Overlay - touch-none added to lock everything */}
          <div 
             className={`absolute inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 touch-none ${isMenuOpen ? 'opacity-100' : 'opacity-0'}`}
             onClick={toggleMenu}
          ></div>
          
-         {/* Side Menu - Width reduced to 240px for a better look on mobile and browser */}
          <div className={`absolute top-0 ${lang === 'ar' ? 'right-0' : 'left-0'} h-[100dvh] w-[240px] bg-white/20 dark:bg-[#0f172a]/40 backdrop-blur-2xl border-l border-white/10 shadow-2xl p-4 transition-transform duration-300 ${isMenuOpen ? 'translate-x-0' : (lang === 'ar' ? 'translate-x-full' : '-translate-x-full')} flex flex-col overflow-hidden`}>
              
-             {/* Header - Compact */}
              <div className="flex justify-between items-center mb-5 shrink-0">
                  <h2 className="text-lg font-bold text-slate-900 dark:text-white drop-shadow-md">{t.menu}</h2>
                  <button onClick={toggleMenu} className="p-1.5 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 rounded-full text-slate-800 dark:text-slate-200 transition-colors">
@@ -130,10 +125,8 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
                  </button>
              </div>
 
-             {/* Navigation Section */}
              <div className="flex-1 flex flex-col gap-1.5 overflow-y-auto no-scrollbar pb-4">
                  
-                 {/* Balance - Compact Card */}
                  {user && (
                     <div className="mb-4 p-3 bg-white/10 dark:bg-white/5 rounded-xl border border-white/20 dark:border-white/10 flex justify-between items-center shadow-lg backdrop-blur-md">
                         <span className="text-slate-700 dark:text-slate-200 font-bold text-xs">{t.balance}:</span>
@@ -144,7 +137,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
                     </div>
                  )}
 
-                 {/* Language Switcher - Very Compact */}
                  <div className="flex gap-1.5 mb-4 justify-center bg-white/10 dark:bg-white/5 p-1 rounded-xl border border-white/10 shrink-0">
                     {(['ar', 'en', 'fr'] as Language[]).map((l) => (
                         <button
@@ -157,7 +149,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
                     ))}
                  </div>
 
-                 {/* Main Links - Narrowed padding */}
                  <button onClick={() => handleNavClick(Tab.HOME)} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-xs group">
                      <Home size={18} className="text-teal-500 shrink-0" /> <span className="truncate">{t.home}</span>
                  </button>
@@ -172,6 +163,15 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
 
                  <button onClick={() => handleNavClick(Tab.ABOUT)} className="w-full flex items-center gap-3 p-2.5 rounded-xl text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10 transition-colors font-bold text-xs group">
                      <Info size={18} className="text-teal-500 shrink-0" /> <span className="truncate">{t.about_us}</span>
+                 </button>
+
+                 {/* زر تساقط الثلج - يتحول للون الأخضر فقط بدون توهج */}
+                 <button 
+                    onClick={() => { setIsSnowing(!isSnowing); }}
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-all font-bold text-xs group ${isSnowing ? 'text-teal-500 bg-teal-500/10' : 'text-slate-800 dark:text-slate-100 hover:bg-white/20 dark:hover:bg-white/10'}`}
+                 >
+                     <Snowflake size={18} className={`shrink-0 ${isSnowing ? 'text-teal-500 animate-spin-slow' : 'text-teal-500'}`} /> 
+                     <span className="truncate">{lang === 'ar' ? 'تساقط الثلج' : 'Snowfall'}</span>
                  </button>
 
                  <button 
@@ -200,7 +200,6 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
                  )}
              </div>
 
-             {/* Footer - Pinned and Very Compact */}
              <div className="pt-3 mt-auto border-t border-white/20 dark:border-white/10 text-center shrink-0">
                 <a 
                     href="https://filex-developer.vercel.app/" 
@@ -217,6 +216,15 @@ const Header: React.FC<HeaderProps> = ({ onTabChange, user, onOpenChat, lang, se
              </div>
          </div>
       </div>
+      <style>{`
+        .animate-spin-slow {
+            animation: spin 8s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+      `}</style>
     </>
   );
 };

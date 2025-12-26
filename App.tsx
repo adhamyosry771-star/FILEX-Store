@@ -14,7 +14,7 @@ import NotificationsPage from './components/NotificationsPage';
 import Ticker from './components/Ticker';
 import PrivacyPage from './components/PrivacyPage';
 import AboutPage from './components/AboutPage';
-import SnowfallEffect from './components/SnowfallEffect';
+import SnowfallEffect from './components/SnowfallEffect'; // تأكد أن اسم الملف مطابق تماماً لاسم الملف في المجلد
 import { Product, Tab, User, Category, Order, BannerData, NewsItem, Language, Notification } from './types';
 import { subscribeToAuthChanges, logoutUser, updateUserProfile } from './auth';
 import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search, Camera, Save, TrendingUp } from 'lucide-react';
@@ -28,7 +28,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const [isSnowing, setIsSnowing] = useState(false); // حالة تساقط الثلج
+  const [isSnowing, setIsSnowing] = useState(false); 
   const [lang, setLang] = useState<Language>('ar');
   
   const t = TRANSLATIONS[lang];
@@ -155,6 +155,7 @@ function App() {
   }, [activeTab]);
 
   const updateTicker = async (msg: string) => await updateDoc(doc(db, "settings", "global"), { ticker: msg });
+  // Fixed: Use 'num' instead of undefined 'msg'
   const updateWhatsApp = async (num: string) => await updateDoc(doc(db, "settings", "global"), { whatsapp: num });
   const updateWalletWhatsApp = async (num: string) => await updateDoc(doc(db, "settings", "global"), { walletWhatsapp: num });
 
@@ -415,7 +416,7 @@ function App() {
         {activeTab === Tab.ADMIN && user?.isAdmin && <AdminDashboard currentUser={user} currentTicker={tickerMessage} onUpdateTicker={updateTicker} products={products} categories={categories} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} orders={orders} onUpdateOrderStatus={handleUpdateOrderStatus} whatsAppNumber={whatsAppNumber} onUpdateWhatsApp={updateWhatsApp} onRefreshData={() => {}} walletWhatsAppNumber={walletWhatsAppNumber} onUpdateWalletWhatsApp={updateWalletWhatsApp} />}
       </main>
       
-      {/* عرض الثلج إذا كانت الحالة مفعلة */}
+      {/* استدعاء المكون بشكل آمن */}
       {isSnowing && <SnowfallEffect />}
 
       {showOrderSuccess && <OrderSuccessModal onClose={() => setShowOrderSuccess(false)} />}
