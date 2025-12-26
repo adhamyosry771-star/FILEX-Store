@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
@@ -15,6 +14,7 @@ import NotificationsPage from './components/NotificationsPage';
 import Ticker from './components/Ticker';
 import PrivacyPage from './components/PrivacyPage';
 import AboutPage from './components/AboutPage';
+import SnowfallEffect from './components/SnowfallEffect';
 import { Product, Tab, User, Category, Order, BannerData, NewsItem, Language, Notification } from './types';
 import { subscribeToAuthChanges, logoutUser, updateUserProfile } from './auth';
 import { Layers, ChevronRight, Zap, X, DollarSign, Send, Search, Camera, Save, TrendingUp } from 'lucide-react';
@@ -28,6 +28,7 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [isSnowing, setIsSnowing] = useState(false); // حالة تساقط الثلج
   const [lang, setLang] = useState<Language>('ar');
   
   const t = TRANSLATIONS[lang];
@@ -275,7 +276,6 @@ function App() {
 
   const renderHome = () => (
     <>
-      {/* Container for Banner with fixed overflow to prevent visual jumps */}
       <div className="px-4 overflow-hidden rounded-2xl transform-gpu">
         <Banner banners={banners} />
       </div>
@@ -312,7 +312,6 @@ function App() {
       const firstCategory = categories.length > 0 ? categories[0] : null;
       const otherCategories = categories.slice(1);
       
-      // Fix: Adding optional key to the props definition to resolve TS error when mapping
       const CategoryButton = ({ cat }: { cat: Category; key?: React.Key }) => (
           <button onClick={() => setSelectedCategory(cat)} className={`relative w-full h-32 rounded-3xl overflow-hidden group ${lang === 'ar' ? 'text-right' : 'text-left'} shadow-xl border border-slate-200 dark:border-slate-700/50 transform transition-all hover:scale-[1.01] mb-4`}>
             <img src={cat.image} alt={cat.name} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -380,7 +379,6 @@ function App() {
                  <input type="text" placeholder={t.search_placeholder} value={storeSearchQuery} onChange={(e) => setStoreSearchQuery(e.target.value)} className="w-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-xl py-3 px-4 pr-10 focus:outline-none focus:ring-2 focus:ring-teal-500 transition-all" />
                  <Search className={`absolute ${lang === 'ar' ? 'right-3' : 'left-3'} top-3.5 text-slate-500`} size={20} />
             </div>
-            {/* UPDATED: grid grid-cols-4 for mobile, md:grid-cols-6 for larger screens */}
             <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 sm:gap-4 animate-fade-in-up">
                 {filteredProducts.map((product) => (
                     <ProductCard key={product.id} product={product} onAdd={() => openPurchaseModal(product)} />
@@ -395,7 +393,17 @@ function App() {
 
   return (
     <div className={`min-h-screen pb-20 md:pb-0 bg-slate-50 dark:bg-[#0f172a] text-slate-900 dark:text-slate-100 font-cairo ${lang === 'ar' ? 'rtl' : 'ltr'} transition-colors duration-300`}>
-      <Header onTabChange={setActiveTab} user={user} onOpenChat={() => setIsSupportOpen(true)} lang={lang} setLang={setLang} unreadNotifications={user ? allNotifications.filter(n => !n.read).length : 0} onLogout={logoutUser} />
+      <Header 
+        onTabChange={setActiveTab} 
+        user={user} 
+        onOpenChat={() => setIsSupportOpen(true)} 
+        lang={lang} 
+        setLang={setLang} 
+        unreadNotifications={user ? allNotifications.filter(n => !n.read).length : 0} 
+        onLogout={logoutUser} 
+        isSnowing={isSnowing}
+        setIsSnowing={setIsSnowing}
+      />
       <main className="max-w-7xl mx-auto pt-4 overflow-hidden">
         {activeTab === Tab.HOME && renderHome()}
         {activeTab === Tab.STORE && renderStore()}
@@ -406,6 +414,10 @@ function App() {
         {activeTab === Tab.ABOUT && <AboutPage onBack={() => setActiveTab(Tab.PROFILE)} lang={lang} />}
         {activeTab === Tab.ADMIN && user?.isAdmin && <AdminDashboard currentUser={user} currentTicker={tickerMessage} onUpdateTicker={updateTicker} products={products} categories={categories} onAddProduct={handleAddProduct} onDeleteProduct={handleDeleteProduct} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} orders={orders} onUpdateOrderStatus={handleUpdateOrderStatus} whatsAppNumber={whatsAppNumber} onUpdateWhatsApp={updateWhatsApp} onRefreshData={() => {}} walletWhatsAppNumber={walletWhatsAppNumber} onUpdateWalletWhatsApp={updateWalletWhatsApp} />}
       </main>
+      
+      {/* عرض الثلج إذا كانت الحالة مفعلة */}
+      {isSnowing && <SnowfallEffect />}
+
       {showOrderSuccess && <OrderSuccessModal onClose={() => setShowOrderSuccess(false)} />}
       {isProfileSetupOpen && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
